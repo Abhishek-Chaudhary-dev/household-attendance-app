@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDocs, query, orderBy, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, query, where, orderBy, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
@@ -14,8 +14,10 @@ const monthEnd=key=>{const [y,m]=key.split("-").map(Number);return iso(new Date(
 const monthLabel=key=>parseDate(`${key}-01`).toLocaleDateString(undefined,{month:"long",year:"numeric"});
 const months=()=>{const out=[];const d=new Date();for(let i=0;i<18;i++){out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d.setMonth(d.getMonth()-1)}return out};
 const dayDiff=(a,b)=>Math.floor((parseDate(b)-parseDate(a))/86400000)+1;
-let user=null,workers=[],attendance=[],settlements=[],selectedMonth=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
-const settlementPath=id=>doc(db,"households",user.uid,"settlements",id);
+let user=null,householdId=null,workers=[],attendance=[],settlements=[],selectedMonth=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
+const normEmail=e=>String(e||"").trim().toLowerCase();
+async function resolveHouseholdId(){if(!user)return null;const own=await getDoc(doc(db,"households",user.uid));if(own.exists())return own.id;const email=normEmail(user.email);if(!email)return null;const q=await getDocs(query(collection(db,"households"),where("memberEmails","array-contains",email)));return q.empty?null:q.docs[0].id}
+const settlementPath=id=>doc(db,"households",householdId,"settlements",id);
 function toast(msg){const t=$("#toast");if(!t)return;t.textContent=msg;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
 function error(msg){toast(msg)}
 function calculate(w,start,end){
@@ -43,10 +45,12 @@ function calculate(w,start,end){
 async function loadData(){
   if(!user)return;
   try{
+    householdId=householdId||await resolveHouseholdId();
+    if(!householdId)throw new Error("No household access found for this Google account.");
     const [w,a,s]=await Promise.all([
-      getDocs(query(collection(db,"households",user.uid,"workers"),orderBy("name"))),
-      getDocs(query(collection(db,"households",user.uid,"attendance"),orderBy("date","desc"))),
-      getDocs(query(collection(db,"households",user.uid,"settlements"),orderBy("periodStart","desc")))
+      getDocs(query(collection(db,"households",householdId,"workers"),orderBy("name"))),
+      getDocs(query(collection(db,"households",householdId,"attendance"),orderBy("date","desc"))),
+      getDocs(query(collection(db,"households",householdId,"settlements"),orderBy("periodStart","desc")))
     ]);
     workers=w.docs.map(d=>({id:d.id,...d.data(),monthlyPaidLeaves:Number(d.data().monthlyPaidLeaves??2),dailyRate:Number(d.data().dailyRate??0),monthlySalary:Number(d.data().monthlySalary??0)}));
     attendance=a.docs.map(d=>({id:d.id,...d.data()}));
