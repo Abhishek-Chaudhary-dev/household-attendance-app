@@ -12,59 +12,23 @@
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">HOUSEHOLD</p>
-        <h1>Attendance</h1>
-      </div>
+      <div><p class="eyebrow">HOUSEHOLD</p><h1>Attendance</h1></div>
       <button id="refreshBtn" class="icon-btn" aria-label="Refresh data" title="Refresh data">↻</button>
     </header>
-
     <main>
-      <section id="loginView" class="view hidden">
-        <div class="welcome-card">
-          <div class="brand-mark">✓</div>
-          <p class="eyebrow">HOUSEHOLD ATTENDANCE</p>
-          <h2>Keep attendance and payments simple.</h2>
-          <p>Sign in with Google to keep your household data safely synced.</p>
-          <button id="googleSignInBtn" class="primary-btn">Continue with Google</button>
-        </div>
-      </section>
-
-      <section id="loadingView" class="view">
-        <div class="loading-card">
-          <div class="spinner"></div>
-          <p>Refreshing household data…</p>
-        </div>
-      </section>
-
+      <section id="loginView" class="view hidden"><div class="welcome-card"><div class="brand-mark">✓</div><p class="eyebrow">HOUSEHOLD ATTENDANCE</p><h2>Keep attendance and payments simple.</h2><p>Sign in with Google to keep your household data safely synced.</p><button id="googleSignInBtn" class="primary-btn">Continue with Google</button></div></section>
+      <section id="loadingView" class="view"><div class="loading-card"><div class="spinner"></div><p>Refreshing household data…</p></div></section>
       <section id="mainView" class="view hidden">
         <div id="staleBanner" class="notice hidden"></div>
-
         <nav class="tabs" aria-label="Main navigation">
-          <button class="tab active" data-view="today">Today</button>
-          <button class="tab" data-view="month">This month</button>
-          <button class="tab" data-view="reports">Reports</button>
-          <button class="tab" data-view="settlement">Settlement</button>
-          <button class="tab" data-view="workers">Workers</button>
+          <button class="tab active" data-view="today">Today</button><button class="tab" data-view="month">This month</button><button class="tab" data-view="reports">Reports</button><button class="tab" data-view="settlement">Settlement</button><button class="tab" data-view="history">History</button><button class="tab" data-view="workers">Workers</button>
         </nav>
-
-        <div id="todayPanel" class="panel"></div>
-        <div id="monthPanel" class="panel hidden"></div>
-        <div id="reportsPanel" class="panel hidden"></div>
-        <div id="settlementPanel" class="panel hidden"></div>
-        <div id="workersPanel" class="panel hidden"></div>
+        <div id="todayPanel" class="panel"></div><div id="monthPanel" class="panel hidden"></div><div id="reportsPanel" class="panel hidden"></div><div id="settlementPanel" class="panel hidden"></div><div id="historyPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div>
       </section>
     </main>
-
     <div id="toast" class="toast hidden" role="alert"></div>
-    <div id="modal" class="modal hidden" aria-modal="true" role="dialog">
-      <div class="modal-card">
-        <button id="closeModal" class="close-btn" aria-label="Close">×</button>
-        <div id="modalContent"></div>
-      </div>
-    </div>
+    <div id="modal" class="modal hidden" aria-modal="true" role="dialog"><div class="modal-card"><button id="closeModal" class="close-btn" aria-label="Close">×</button><div id="modalContent"></div></div></div>
   </div>
-  <script type="module" src="app.js"></script>
-  <script type="module" src="settlement.js"></script>
+  <script type="module" src="app.js"></script><script type="module" src="settlement.js"></script><script type="module" src="history.js"></script>
 </body>
 </html>
