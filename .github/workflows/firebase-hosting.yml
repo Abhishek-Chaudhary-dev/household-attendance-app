@@ -13,10 +13,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Deploy to Firebase Hosting
+      - name: Deploy Firestore rules and Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHATGPT_HOUSEHOLD_ATTENDANCE }}"
           projectId: chatgpt-household-attendance
           channelId: live
           entryPoint: .
+
+      - name: Deploy Firestore rules
+        uses: w9jds/firebase-action@v14
+        with:
+          args: deploy --only firestore:rules --project chatgpt-household-attendance
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
