@@ -13,17 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Deploy Firestore rules and Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
         with:
-          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHATGPT_HOUSEHOLD_ATTENDANCE }}"
-          projectId: chatgpt-household-attendance
-          channelId: live
-          entryPoint: .
+          node-version: 22
 
-      - name: Deploy Firestore rules
-        uses: w9jds/firebase-action@v14
-        with:
-          args: deploy --only firestore:rules --project chatgpt-household-attendance
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Write Firebase service account
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CHATGPT_HOUSEHOLD_ATTENDANCE }}
+        run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+
+      - name: Deploy Hosting and Firestore rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: firebase deploy --only hosting,firestore:rules --project chatgpt-household-attendance --non-interactive
+
+      - name: Remove service account
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
