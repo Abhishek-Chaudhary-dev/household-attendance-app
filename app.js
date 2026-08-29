@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, orderBy, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider();
@@ -11,10 +11,29 @@ const today=()=>iso(new Date());
 const monthKey=d=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}`};
 const parseDate=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
 const esc=s=>String(s??"").replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const path=(name,id)=>id?doc(db,"households",state.user.uid,name,id):collection(db,"households",state.user.uid,name);
+const path=(name,id)=>id?doc(db,"households",state.household.id,name,id):collection(db,"households",state.household.id,name);
+const normEmail=e=>String(e||"").trim().toLowerCase();
+const owner=()=>state.household?.ownerUid===state.user?.uid;
 function error(t,m){$("#modalContent").innerHTML=`<h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">OK</button>`;$("#modal").classList.remove("hidden");$("#ok").onclick=()=>$("#modal").classList.add("hidden")}
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
-async function ensureHousehold(){const r=doc(db,"households",state.user.uid),s=await getDoc(r);if(!s.exists()){await setDoc(r,{ownerUid:state.user.uid,ownerEmail:state.user.email||"",name:"My Household",members:[state.user.uid],createdAt:serverTimestamp()});return {ownerUid:state.user.uid,members:[state.user.uid],name:"My Household"}}return {id:s.id,...s.data()}}
+async function ensureHousehold(){
+  const ownRef=doc(db,"households",state.user.uid),ownSnap=await getDoc(ownRef),email=normEmail(state.user.email);
+  if(ownSnap.exists()){
+    const household=normalizeHousehold(ownSnap);
+    if(!household.memberEmails.includes(email)){
+      household.memberEmails=Array.from(new Set([...(household.memberEmails||[]),email].filter(Boolean)));
+      await setDoc(ownRef,{memberEmails:household.memberEmails,updatedAt:serverTimestamp()},{merge:true});
+    }
+    return household;
+  }
+  if(email){
+    const invited=await getDocs(query(collection(db,"households"),where("memberEmails","array-contains",email)));
+    if(!invited.empty)return normalizeHousehold(invited.docs[0]);
+  }
+  await setDoc(ownRef,{ownerUid:state.user.uid,ownerEmail:email,name:"My Household",members:[state.user.uid],memberEmails:[email],createdAt:serverTimestamp()});
+  return {id:state.user.uid,ownerUid:state.user.uid,ownerEmail:email,members:[state.user.uid],memberEmails:[email],name:"My Household"}
+}
+function normalizeHousehold(s){const d=s.data();return {id:s.id,...d,members:Array.isArray(d.members)?d.members:[],memberEmails:Array.isArray(d.memberEmails)?d.memberEmails.map(normEmail).filter(Boolean):[normEmail(d.ownerEmail)].filter(Boolean)}}
 async function load(){
   $("#loadingView").classList.remove("hidden");$("#mainView").classList.add("hidden");
   try{
@@ -86,8 +105,30 @@ async function createDueReports(){
 function reportCard(r){const total=(r.summary||[]).reduce((n,x)=>n+Number(x.finalPayment||0),0);return `<article class="report-card"><div class="section-head"><div><h3>${esc(r.label)}</h3><div class="subtle">${r.kind==="week"?"Sunday–Saturday":"Full calendar month"}</div></div><strong>₹${total.toLocaleString("en-IN")}</strong></div><div class="report-grid">${(r.summary||[]).map(x=>`<div class="report-metric"><strong>${esc(x.name)}</strong><span>${x.presentShifts} present · ${x.leaveShifts} leave · ${x.unpaidLeaveShifts} unpaid leave shifts · ₹${Number(x.finalPayment||0).toLocaleString("en-IN")}</span></div>`).join("")}</div></article>`}
 function renderReports(){const ws=state.reports.filter(r=>r.kind==="week").slice(0,8),ms=state.reports.filter(r=>r.kind==="month").slice(0,12);$("#reportsPanel").innerHTML=`<div class="section-head"><div><h2>Reports</h2><div class="subtle">Reports are created when the app opens after a period closes.</div></div></div><div class="report-actions"><button class="mini-action" data-action="report" data-kind="week">Generate current week</button><button class="mini-action" data-action="report" data-kind="month">Generate current month</button></div><h3>Weekly</h3>${ws.map(reportCard).join("")||"<div class='report-card'><p class='subtle'>No weekly reports yet.</p></div>"}<h3>Monthly</h3>${ms.map(reportCard).join("")||"<div class='report-card'><p class='subtle'>No monthly reports yet.</p></div>"}`}
 function renderWorkers(){$("#workersPanel").innerHTML=`<div class="section-head"><div><h2>Workers</h2><div class="subtle">Different leave and payment rules per worker.</div></div><button class="mini-action" data-action="add">+ Worker</button></div>${state.workers.map(w=>`<article class="worker-card"><div><p class="worker-name">${esc(w.name)} ${w.active===false?"· Inactive":""}</p><div class="worker-meta">${esc(w.role||"Worker")} · ${w.monthlyPaidLeaves} leave days · ₹${Number(w.dailyRate||0).toLocaleString("en-IN")}/day · ${w.paymentPolicy==="full"?"pay full if leave exceeds allowance":"deduct excess leave"}</div></div><button class="mini-action" data-action="edit" data-id="${w.id}">Edit</button></article>`).join("")}`}
+
+function renderHousehold(){
+  const emails=state.household.memberEmails||[],isOwner=owner();
+  $("#householdPanel").innerHTML=`<div class="section-head"><div><h2>Household users</h2><div class="subtle">Share this household with Google accounts by email.</div></div></div>
+    <article class="summary-card"><h3>${esc(state.household.name||"My Household")}</h3><p class="subtle">Owner: ${esc(state.household.ownerEmail||"")}</p>${isOwner?`<form id="memberForm" class="member-form"><label><span class="subtle">Invite Google account email</span><input name="email" type="email" required placeholder="name@example.com"></label><button class="primary-btn">Add member</button></form>`:`<p class="subtle">Only the owner can add or remove household members.</p>`}</article>
+    ${emails.map(email=>`<article class="member-card"><div><strong>${esc(email)}</strong><div class="subtle">${email===normEmail(state.household.ownerEmail)?"Owner":"Member"}</div></div>${isOwner&&email!==normEmail(state.household.ownerEmail)?`<button class="mini-action danger-action" data-member-remove="${esc(email)}">Remove</button>`:""}</article>`).join("")}`;
+  const form=$("#memberForm");if(form)form.onsubmit=addMember;
+}
+async function addMember(e){
+  e.preventDefault();
+  if(!owner())return error("Only the owner can add members","Ask the household owner to update users.");
+  const email=normEmail(new FormData(e.target).get("email"));
+  if(!email)return;
+  const memberEmails=Array.from(new Set([...(state.household.memberEmails||[]).map(normEmail),email].filter(Boolean)));
+  try{await updateDoc(doc(db,"households",state.household.id),{memberEmails,updatedAt:serverTimestamp()});state.household.memberEmails=memberEmails;render();toast("Member added")}catch(err){error("Member wasn't added",err.message)}
+}
+async function removeMember(email){
+  if(!owner())return;
+  const target=normEmail(email),ownerEmail=normEmail(state.household.ownerEmail);
+  const memberEmails=(state.household.memberEmails||[]).map(normEmail).filter(e=>e&&(e!==target||e===ownerEmail));
+  try{await updateDoc(doc(db,"households",state.household.id),{memberEmails,updatedAt:serverTimestamp()});state.household.memberEmails=memberEmails;render();toast("Member removed")}catch(err){error("Member wasn't removed",err.message)}
+}
 function renderAccount(){const existing=$("#accountBar");if(existing)existing.remove();const bar=document.createElement("div");bar.id="accountBar";bar.className="account-bar";bar.innerHTML=`<span>${esc(state.user?.email||"")}</span><button class="mini-action" id="logoutBtn">Sign out</button>`;$("#mainView").prepend(bar)}
-function render(){renderToday();renderMonth();renderReports();renderWorkers();renderAccount();$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));["today","month","reports","workers"].forEach(v=>$("#"+v+"Panel").classList.toggle("hidden",v!==state.view))}
+function render(){renderToday();renderMonth();renderReports();renderWorkers();renderHousehold();renderAccount();$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));["today","month","reports","settlement","history","workers","household"].forEach(v=>$("#"+v+"Panel").classList.toggle("hidden",v!==state.view))}
 function workerModal(id){const w=id?state.workers.find(x=>x.id===id):null;$("#modalContent").innerHTML=`<h2>${w?"Edit worker":"Add worker"}</h2><p class="subtle">Set this worker's rules. You can change them later.</p><form id="wf" class="form-grid"><label>Name<input name="name" required value="${esc(w?.name||"")}"></label><label>Role<input name="role" value="${esc(w?.role||"")}" placeholder="Housemaid, car cleaner…"></label><label>Paid leave allowance (days/month)<input name="leave" type="number" min="0" step="1" value="${w?.monthlyPaidLeaves??2}"></label><label>Daily rate (₹)<input name="rate" type="number" min="0" step="1" value="${w?.dailyRate??0}"></label><label>Payment method<select name="payType"><option value="daily" ${w?.payType!=="monthly"?"selected":""}>Daily rate</option><option value="monthly" ${w?.payType==="monthly"?"selected":""}>Monthly salary</option></select></label><label>Monthly salary (₹)<input name="salary" type="number" min="0" step="1" value="${w?.monthlySalary??0}"></label><label>If leave allowance is exceeded<select name="policy"><option value="deduct" ${w?.paymentPolicy!=="full"?"selected":""}>Deduct excess leave</option><option value="full" ${w?.paymentPolicy==="full"?"selected":""}>Pay full amount anyway</option></select></label><label>Worker status<select name="active"><option value="true" ${w?.active!==false?"selected":""}>Active</option><option value="false" ${w?.active===false?"selected":""}>Inactive</option></select></label><div class="form-actions"><button type="button" class="secondary-btn" id="cancel">Cancel</button><button class="primary-btn">Save</button></div></form>`;$("#modal").classList.remove("hidden");$("#cancel").onclick=()=>$("#modal").classList.add("hidden");$("#wf").onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),data={name:String(f.get("name")).trim(),role:String(f.get("role")).trim(),monthlyPaidLeaves:Number(f.get("leave")),dailyRate:Number(f.get("rate")),payType:f.get("payType"),monthlySalary:Number(f.get("salary")),paymentPolicy:f.get("policy"),active:f.get("active")==="true",updatedAt:serverTimestamp()};if(!data.name){return}try{if(w)await updateDoc(path("workers",w.id),data);else await addDoc(path("workers"),{...data,createdAt:serverTimestamp()});$("#modal").classList.add("hidden");await load();toast("Worker saved")}catch(e){error("Worker wasn't saved",e.message)}}}
 $("#googleSignInBtn").onclick=async()=>{try{await signInWithPopup(auth,provider)}catch(e){error("Google sign-in failed",e.message)}};
 $("#refreshBtn").onclick=load;
@@ -97,6 +138,7 @@ document.addEventListener("click",e=>{
   const s=e.target.closest("[data-shift]");if(s){state.selectedDate=parseDate(s.dataset.date);mark(s.dataset.worker,s.dataset.shift);return}
   const dm=e.target.closest("[data-date-move]");if(dm){state.selectedDate=new Date(state.selectedDate);state.selectedDate.setDate(state.selectedDate.getDate()+Number(dm.dataset.dateMove));renderToday();return}
   const dt=e.target.closest("[data-date-today]");if(dt){state.selectedDate=new Date();renderToday();return}
+  const rm=e.target.closest("[data-member-remove]");if(rm){removeMember(rm.dataset.memberRemove);return}
   const a=e.target.closest("[data-action]");if(!a)return;
   if(a.dataset.action==="add")workerModal();
   if(a.dataset.action==="edit")workerModal(a.dataset.id);

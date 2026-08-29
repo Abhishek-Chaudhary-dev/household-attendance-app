@@ -2,26 +2,51 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function email() { return request.auth.token.email.lower(); }
     function householdPath(householdId) { return /databases/$(database)/documents/households/$(householdId); }
-    function member(householdId) {
-      return signedIn() && request.auth.uid in get(householdPath(householdId)).data.members;
+    function household(householdId) { return get(householdPath(householdId)).data; }
+    function isOwner(householdId) { return signedIn() && request.auth.uid == household(householdId).ownerUid; }
+    function isMember(householdId) {
+      return signedIn() && (
+        request.auth.uid in household(householdId).members ||
+        email() in household(householdId).memberEmails
+      );
     }
+    function validHouseholdCreate(householdId) {
+      return signedIn()
+        && request.auth.uid == householdId
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.auth.uid in request.resource.data.members
+        && email() in request.resource.data.memberEmails;
+    }
+    function validHouseholdUpdate(householdId) {
+      return isOwner(householdId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.ownerEmail == resource.data.ownerEmail
+        && request.auth.uid in request.resource.data.members
+        && resource.data.ownerEmail in request.resource.data.memberEmails;
+    }
+
     match /households/{householdId} {
-      allow read: if member(householdId) || (signedIn() && request.auth.uid == householdId);
-      allow create: if signedIn() && request.auth.uid == householdId;
-      allow update: if signedIn() && request.auth.uid == householdId;
+      allow read: if signedIn() && (
+        request.auth.uid == householdId ||
+        request.auth.uid in resource.data.members ||
+        email() in resource.data.memberEmails
+      );
+      allow create: if validHouseholdCreate(householdId);
+      allow update: if validHouseholdUpdate(householdId);
       allow delete: if false;
       match /workers/{workerId} {
-        allow read, write: if member(householdId);
+        allow read, write: if isMember(householdId);
       }
       match /attendance/{attendanceId} {
-        allow read, write: if member(householdId);
+        allow read, write: if isMember(householdId);
       }
       match /reports/{reportId} {
-        allow read, write: if member(householdId);
+        allow read, write: if isMember(householdId);
       }
       match /settlements/{settlementId} {
-        allow read, write: if member(householdId);
+        allow read, write: if isMember(householdId);
       }
     }
   }
