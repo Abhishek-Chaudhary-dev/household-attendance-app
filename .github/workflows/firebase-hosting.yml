@@ -34,3 +34,5 @@ jobs:
       - name: Remove service account
         if: always()
         run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
+
+# Trigger a fresh deployment using the corrected CLI-based workflow.
