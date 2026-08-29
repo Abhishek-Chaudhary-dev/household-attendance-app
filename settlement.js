@@ -1,10 +1,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, query, orderBy, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDocs, query, orderBy, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
-const $=s=>document.querySelector(s);
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??"").replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=n=>`₹${Number(n||0).toLocaleString("en-IN")}`;
 const parseDate=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)};
@@ -15,8 +15,7 @@ const monthLabel=key=>parseDate(`${key}-01`).toLocaleDateString(undefined,{month
 const months=()=>{const out=[];const d=new Date();for(let i=0;i<18;i++){out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d.setMonth(d.getMonth()-1)}return out};
 const dayDiff=(a,b)=>Math.floor((parseDate(b)-parseDate(a))/86400000)+1;
 let user=null,workers=[],attendance=[],settlements=[],selectedMonth=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
-const workerPath=(id)=>doc(db,"households",user.uid,"workers",id);
-const settlementPath=(id)=>doc(db,"households",user.uid,"settlements",id);
+const settlementPath=id=>doc(db,"households",user.uid,"settlements",id);
 function toast(msg){const t=$("#toast");if(!t)return;t.textContent=msg;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
 function error(msg){toast(msg)}
 function calculate(w,start,end){
@@ -67,9 +66,9 @@ function render(){
     ${rows.length?rows.map(r=>`<article class="settlement-card"><div class="settlement-card-head"><div><h3>${esc(r.name)}</h3><div class="subtle">${r.paymentMethod==="monthly"?`Monthly salary ${money(r.monthlySalary)}`:`Daily rate ${money(r.dailyRate)}`}</div></div><strong class="settlement-amount">${money(r.finalPayment)}</strong></div><div class="settlement-breakdown"><span>${r.presentDays} present days</span><span>${r.paidLeaveDays} paid leave days</span><span>${r.unpaidLeaveDays} unpaid leave days</span><span>${r.absentDays} absent days</span></div><div class="settlement-line"><span>Base</span><strong>${money(r.basePayment)}</strong></div>${r.deduction?`<div class="settlement-line deduction"><span>Excess leave deduction</span><strong>− ${money(r.deduction)}</strong></div>`:""}</article>`).join(""):"<div class='summary-card'><h3>No active workers</h3><p class='subtle'>Add workers first, then return here to calculate settlement.</p></div>"}
     <div class="settlement-actions"><button class="mini-action" id="saveSettlement">${paid?"Update paid record":"Save settlement"}</button>${paid?`<span class="subtle">Marked paid on ${existing.paidAt?.toDate?existing.paidAt.toDate().toLocaleDateString():"recorded date"}</span>`:"<span class='subtle'>Saving does not mark it paid until you confirm below.</span>"}</div>`;
   $("#settlementMonth").onchange=e=>{selectedMonth=e.target.value;render()};
-  $("#saveSettlement").onclick=()=>saveSettlement(rows,total,totalDed,paid);
+  $("#saveSettlement").onclick=()=>saveSettlement(rows,total,totalDed);
 }
-async function saveSettlement(rows,total,deduction,alreadyPaid){
+async function saveSettlement(rows,total,deduction){
   if(!user)return;
   const existing=settlementForMonth();
   try{
@@ -78,10 +77,16 @@ async function saveSettlement(rows,total,deduction,alreadyPaid){
     if(existing?.status==="paid")payload.paidAt=existing.paidAt||serverTimestamp();
     await setDoc(settlementPath(id),payload,{merge:true});
     const wantsPaid=confirm(`Settlement saved for ${monthLabel(selectedMonth)}. Mark it as PAID now?`);
-    if(wantsPaid){await setDoc(settlementPath(id),{status:"paid",paidAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true})}
+    if(wantsPaid)await setDoc(settlementPath(id),{status:"paid",paidAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
     await loadData();toast(wantsPaid?"Settlement saved and marked paid":"Settlement saved");
   }catch(e){error(`Settlement wasn't saved: ${e.message}`)}
 }
-document.addEventListener("click",e=>{const t=e.target.closest('.tab');if(t?.dataset.view==="settlement"){setTimeout(()=>{$$('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view==="settlement"));$$('.panel').forEach(p=>p.classList.toggle('hidden',p.id!=="settlementPanel"))},0)}});
-const $$=s=>[...document.querySelectorAll(s)];
+document.addEventListener("click",e=>{
+  const t=e.target.closest('.tab');if(!t)return;
+  const isSettlement=t.dataset.view==="settlement";
+  setTimeout(()=>{
+    $$('.tab').forEach(b=>b.classList.toggle('active',b===t));
+    const panel=$("#settlementPanel");if(panel)panel.classList.toggle("hidden",!isSettlement);
+  },0);
+});
 onAuthStateChanged(auth,u=>{user=u;if(u)loadData()});
