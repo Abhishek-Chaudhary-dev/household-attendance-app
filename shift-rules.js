@@ -81,7 +81,6 @@ function patchMonth(){
     if(vals[2])vals[2].textContent=s.absentDays;
     const labels=card.querySelectorAll(".stat span");if(labels[0])labels[0].textContent="Attended days";if(labels[1])labels[1].textContent="Leave days";if(labels[2])labels[2].textContent="Absent days";
   });
-  $$(".cell",panel).forEach(cell=>{const title=cell.getAttribute("title")||"";if(title&&!title.includes("Morning"))return});
 }
 function patchReports(){
   const panel=$("#reportsPanel");if(!panel||panel.classList.contains("hidden"))return;
@@ -89,7 +88,7 @@ function patchReports(){
     const name=metric.querySelector("strong")?.textContent?.trim();const w=workers.find(x=>x.name===name);if(!w)return;
     const text=metric.querySelector("span");if(!text)return;
     const row=metric.closest("article")?.querySelector("h3")?.textContent||"";
-    const match=row.match(/(\\d{4}-\\d{2}-\\d{2})[^\\d]*(\\d{4}-\\d{2}-\\d{2})/);
+    const match=row.match(/(\d{4}-\d{2}-\d{2})[^\d]*(\d{4}-\d{2}-\d{2})/);
     if(!match)return;
     const s=workerStats(w,match[1],match[2]);text.textContent=`${s.presentDays} attended days · ${s.leaveDays} leave days · ${s.unpaidLeaveDays} unpaid leave days · ${money(s.finalPayment)}`;
   });
