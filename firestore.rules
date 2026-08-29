@@ -20,6 +20,9 @@ service cloud.firestore {
       match /reports/{reportId} {
         allow read, write: if member(householdId);
       }
+      match /settlements/{settlementId} {
+        allow read, write: if member(householdId);
+      }
     }
   }
 }
