@@ -3,45 +3,55 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#ffffff" />
+  <meta name="theme-color" content="#1F5D4A" />
   <meta name="description" content="Simple household worker attendance and payment tracker." />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=4" />
   <title>Household Attendance</title>
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="brand-lockup"><p class="eyebrow">HOUSEHOLD</p><h1>Attendance</h1></div>
-      <button id="refreshBtn" class="icon-btn" aria-label="Refresh data" title="Refresh data">↻</button>
+      <div class="avatar" id="avatarInitial">·</div>
+      <div class="topbar-mid">
+        <p class="eyebrow">My Household</p>
+        <div class="topbar-title" id="screenTitle">Home</div>
+      </div>
+      <button id="accountBtn" class="topbar-action" aria-label="Account" aria-expanded="false">⋯</button>
+      <div id="accountMenu" class="account-menu hidden" role="menu">
+        <div class="who"><p class="eyebrow" style="margin-bottom:3px">Signed in</p><div class="email" id="accountEmail"></div></div>
+        <button id="refreshBtn" role="menuitem">↻&nbsp; Refresh data</button>
+        <button id="logoutBtn" role="menuitem">⎋&nbsp; Sign out</button>
+      </div>
     </header>
     <main>
       <section id="loginView" class="view hidden"><div class="welcome-card"><div class="brand-mark">✓</div><p class="eyebrow">HOUSEHOLD ATTENDANCE</p><h2>Keep attendance and payments simple.</h2><p>Sign in with Google to keep your household data safely synced.</p><button id="googleSignInBtn" class="primary-btn">Continue with Google</button></div></section>
       <section id="loadingView" class="view"><div class="loading-card"><div class="spinner"></div><p>Refreshing household data…</p></div></section>
       <section id="mainView" class="view hidden">
         <div id="staleBanner" class="notice hidden"></div>
-        <nav class="tabs" aria-label="Main navigation">
-          <div class="primary-tabs">
-            <button class="tab active" data-view="today"><span class="nav-icon">⌂</span><span>Home</span></button>
-            <button class="tab" data-view="workers"><span class="nav-icon">♙</span><span>Workers</span></button>
-            <button class="tab" data-view="reports"><span class="nav-icon">▤</span><span>Reports</span></button>
-            <button class="tab" data-view="settlement"><span class="nav-icon">₹</span><span>Payments</span></button>
-          </div>
-          <details class="more-nav">
-            <summary><span class="nav-icon">•••</span><span>More</span></summary>
-            <div class="more-menu">
-              <button class="tab" data-view="month"><span class="nav-icon">▦</span><span>This month</span></button>
-              <button class="tab" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
-              <button class="tab" data-view="household"><span class="nav-icon">⌂</span><span>Household</span></button>
-            </div>
-          </details>
-        </nav>
         <div id="todayPanel" class="panel"></div><div id="monthPanel" class="panel hidden"></div><div id="reportsPanel" class="panel hidden"></div><div id="settlementPanel" class="panel hidden"></div><div id="historyPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="householdPanel" class="panel hidden"></div>
       </section>
     </main>
+    <nav class="tabbar" aria-label="Main navigation">
+      <button class="tab active" data-view="today"><span class="nav-icon">⌂</span><span>Home</span></button>
+      <button class="tab" data-view="workers"><span class="nav-icon">♙</span><span>Workers</span></button>
+      <button class="tab" data-view="reports"><span class="nav-icon">▤</span><span>Reports</span></button>
+      <button class="tab" data-view="settlement"><span class="nav-icon">₹</span><span>Payments</span></button>
+      <button class="tab" id="moreBtn" aria-haspopup="true" aria-expanded="false"><span class="nav-icon">•••</span><span>More</span></button>
+    </nav>
+    <div id="sheetBackdrop" class="sheet-backdrop"></div>
+    <div id="moreSheet" class="sheet" role="menu">
+      <div class="grabber"></div>
+      <button class="tab" data-view="month"><span class="nav-icon">▦</span><span>This month</span></button>
+      <button class="tab" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
+      <button class="tab" data-view="household"><span class="nav-icon">⌂</span><span>Household</span></button>
+    </div>
     <div id="toast" class="toast hidden" role="alert"></div>
     <div id="modal" class="modal hidden" aria-modal="true" role="dialog"><div class="modal-card"><button id="closeModal" class="close-btn" aria-label="Close">×</button><div id="modalContent"></div></div></div>
   </div>
-  <script type="module" src="app.js?v=3"></script><script type="module" src="settlement.js?v=3"></script><script type="module" src="history.js?v=3"></script><script type="module" src="navigation.js?v=3"></script>
+  <script type="module" src="app.js?v=4"></script><script type="module" src="settlement.js?v=4"></script><script type="module" src="history.js?v=4"></script><script type="module" src="navigation.js?v=4"></script>
 </body>
 </html>
