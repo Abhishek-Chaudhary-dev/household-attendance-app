@@ -6,7 +6,8 @@
   <meta name="theme-color" content="#ffffff" />
   <meta name="description" content="Simple household worker attendance and payment tracker." />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="styles.css?v=4.1" />
+  <link rel="stylesheet" href="styles.css?v=4.2" />
+  <link rel="stylesheet" href="v4-polish.css?v=4.2" />
   <title>Household Attendance</title>
 </head>
 <body>
@@ -39,8 +40,9 @@
         <div id="todayPanel" class="panel"></div><div id="monthPanel" class="panel hidden"></div><div id="reportsPanel" class="panel hidden"></div><div id="settlementPanel" class="panel hidden"></div><div id="historyPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="householdPanel" class="panel hidden"></div>
       </section>
     </main>
+    <div id="toast" class="toast hidden" role="alert"></div>
+    <div id="modal" class="modal hidden" aria-modal="true" role="dialog"><div class="modal-card"><button id="closeModal" class="close-btn" aria-label="Close">×</button><div id="modalContent"></div></div></div>
   </div>
-  <div id="modalRoot"></div>
-  <script type="module" src="app.js?v=4.1"></script>
+  <script type="module" src="app.js?v=4.2"></script>
 </body>
 </html>
