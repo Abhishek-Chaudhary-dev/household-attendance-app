@@ -1,6 +1,6 @@
 // V3 navigation owns panel visibility, active tab state, the screen title,
 // and the More bottom sheet — all in one place. app.js/settlement.js/history.js
-// must never toggle panel .hidden classes themselves (see V3-DESIGN-NOTES.md).
+// must never toggle panel .hidden classes themselves.
 (() => {
   const panels = [
     ["today", "todayPanel"],
