@@ -12,7 +12,7 @@
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div><p class="eyebrow">HOUSEHOLD</p><h1>Attendance</h1></div>
+      <div class="brand-lockup"><p class="eyebrow">HOUSEHOLD</p><h1>Attendance</h1></div>
       <button id="refreshBtn" class="icon-btn" aria-label="Refresh data" title="Refresh data">↻</button>
     </header>
     <main>
@@ -21,7 +21,20 @@
       <section id="mainView" class="view hidden">
         <div id="staleBanner" class="notice hidden"></div>
         <nav class="tabs" aria-label="Main navigation">
-          <button class="tab active" data-view="today">Today</button><button class="tab" data-view="month">This month</button><button class="tab" data-view="reports">Reports</button><button class="tab" data-view="settlement">Settlement</button><button class="tab" data-view="history">History</button><button class="tab" data-view="workers">Workers</button><button class="tab" data-view="household">Household</button>
+          <div class="primary-tabs">
+            <button class="tab active" data-view="today"><span class="nav-icon">⌂</span><span>Home</span></button>
+            <button class="tab" data-view="workers"><span class="nav-icon">♙</span><span>Workers</span></button>
+            <button class="tab" data-view="reports"><span class="nav-icon">▤</span><span>Reports</span></button>
+            <button class="tab" data-view="settlement"><span class="nav-icon">₹</span><span>Payments</span></button>
+          </div>
+          <details class="more-nav">
+            <summary><span class="nav-icon">•••</span><span>More</span></summary>
+            <div class="more-menu">
+              <button class="tab" data-view="month"><span class="nav-icon">▦</span><span>This month</span></button>
+              <button class="tab" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
+              <button class="tab" data-view="household"><span class="nav-icon">⌂</span><span>Household</span></button>
+            </div>
+          </details>
         </nav>
         <div id="todayPanel" class="panel"></div><div id="monthPanel" class="panel hidden"></div><div id="reportsPanel" class="panel hidden"></div><div id="settlementPanel" class="panel hidden"></div><div id="historyPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="householdPanel" class="panel hidden"></div>
       </section>
