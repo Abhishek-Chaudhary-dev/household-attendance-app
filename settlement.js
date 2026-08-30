@@ -85,12 +85,4 @@ async function saveSettlement(rows,total,deduction){
     await loadData();toast(wantsPaid?"Settlement saved and marked paid":"Settlement saved");
   }catch(e){error(`Settlement wasn't saved: ${e.message}`)}
 }
-document.addEventListener("click",e=>{
-  const t=e.target.closest('.tab');if(!t)return;
-  const isSettlement=t.dataset.view==="settlement";
-  setTimeout(()=>{
-    $$('.tab').forEach(b=>b.classList.toggle('active',b===t));
-    const panel=$("#settlementPanel");if(panel)panel.classList.toggle("hidden",!isSettlement);
-  },0);
-});
 onAuthStateChanged(auth,u=>{user=u;if(u)loadData()});
