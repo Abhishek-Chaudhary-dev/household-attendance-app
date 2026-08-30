@@ -1,0 +1,34 @@
+/* V4 cosmetic polish only. No application or data logic. */
+:root{--ink:#16221e;--muted:#71807a;--line:#dbe5e0;--soft:#f6f9f7;--mint:#d8f3e8;--accent:#117a5f;--accent-dark:#0d634d;--shadow:0 14px 34px rgba(22,34,30,.055);--shadow-sm:0 5px 18px rgba(22,34,30,.045)}
+body{background:linear-gradient(180deg,#f1f5f3 0,#f8faf9 48%,#f1f5f3 100%)}
+.app-shell{box-shadow:0 0 70px rgba(22,34,30,.07)}
+.topbar{padding:16px 22px 15px;border-bottom-color:#e0e8e4}
+.topbar h1{font-size:26px;letter-spacing:-.06em}
+.icon-btn{width:44px;height:44px;border-radius:14px;background:#f7faf8}
+main{padding:20px 22px 122px}
+.section-head{margin:4px 0 13px}
+.section-head h2{font-size:27px}
+.subtle{font-size:12px}
+.date-control{margin-bottom:14px;padding:7px;border-radius:18px;background:#f7f9f8;box-shadow:inset 0 1px 0 rgba(255,255,255,.9)}
+.date-control .mini-action{background:#fff;border-color:#dfe7e3}
+.date-control input{font-weight:800}
+.primary-btn{min-height:48px;padding-inline:20px;border-radius:15px;box-shadow:0 8px 18px rgba(17,122,95,.16)}
+.secondary-btn,.mini-action{background:#fff;border-color:#dbe5e0;box-shadow:0 4px 14px rgba(22,34,30,.035)}
+.mini-action{min-height:42px;border-radius:13px}
+.worker-card,.summary-card,.report-card,.settlement-card,.member-card{border-color:#dce6e1;box-shadow:var(--shadow-sm)}
+.worker-card{padding:17px;border-radius:20px}
+.summary-card,.report-card,.settlement-card{padding:17px;border-radius:20px}
+.stat,.settlement-summary>div,.report-metric{background:#f5f8f6;border:1px solid #edf2ef}
+.stat{padding:13px;border-radius:15px}
+.stat strong{font-size:20px}
+.report-actions{gap:8px;margin-bottom:20px}
+.report-panel h3,#reportsPanel>h3{margin:19px 0 9px}
+.report-card>.section-head>strong{font-size:17px}
+.settlement-toolbar select,.settlement-toolbar input{min-height:42px;padding:9px 12px;border:1px solid #dbe5e0;border-radius:13px;background:#fff;color:var(--ink);font:inherit}
+.tabs{padding:8px 10px calc(8px + env(safe-area-inset-bottom));gap:5px;box-shadow:0 -12px 30px rgba(22,34,30,.065)}
+.tab,.more-nav>summary{min-height:56px;border-radius:16px;gap:4px}
+.tab.active{background:var(--mint);box-shadow:inset 0 0 0 1px rgba(17,122,95,.06)}
+.nav-icon{font-size:17px}
+.more-menu{border-color:#dce6e1;box-shadow:0 18px 42px rgba(22,34,30,.14)}
+.modal-card{border-color:#dce6e1;box-shadow:0 24px 70px rgba(22,34,30,.2)}
+@media(max-width:560px){main{padding:17px 14px 116px}.topbar{padding:14px 15px 13px}.topbar h1{font-size:23px}.section-head h2{font-size:25px}.date-control{border-radius:17px}.summary-card,.report-card,.settlement-card{padding:16px;border-radius:19px}.tabs{padding-left:8px;padding-right:8px}.tab,.more-nav>summary{min-height:55px}}
