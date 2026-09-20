@@ -3,26 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1F5D4A" />
+  <meta name="theme-color" content="#1E9461" />
   <meta name="description" content="Simple household worker attendance and payment tracker." />
   <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=5" />
   <title>Household Attendance</title>
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="avatar" id="avatarInitial">·</div>
+      <div class="avatar-mark" id="avatarInitial">·</div>
       <div class="topbar-mid">
         <p class="eyebrow">My Household</p>
-        <div class="topbar-title" id="screenTitle">Home</div>
+        <div class="topbar-title" id="screenTitle">Today</div>
       </div>
       <button id="accountBtn" class="topbar-action" aria-label="Account" aria-expanded="false">⋯</button>
       <div id="accountMenu" class="account-menu hidden" role="menu">
         <div class="who"><p class="eyebrow" style="margin-bottom:3px">Signed in</p><div class="email" id="accountEmail"></div></div>
+        <button id="householdBtn" role="menuitem">⌂&nbsp; Household members</button>
         <button id="refreshBtn" role="menuitem">↻&nbsp; Refresh data</button>
         <button id="logoutBtn" role="menuitem">⎋&nbsp; Sign out</button>
       </div>
@@ -32,26 +33,43 @@
       <section id="loadingView" class="view"><div class="loading-card"><div class="spinner"></div><p>Refreshing household data…</p></div></section>
       <section id="mainView" class="view hidden">
         <div id="staleBanner" class="notice hidden"></div>
-        <div id="todayPanel" class="panel"></div><div id="monthPanel" class="panel hidden"></div><div id="reportsPanel" class="panel hidden"></div><div id="settlementPanel" class="panel hidden"></div><div id="historyPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="householdPanel" class="panel hidden"></div>
+        <div id="todayPanel" class="panel"></div><div id="calendarPanel" class="panel hidden"></div><div id="payPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="detailsPanel" class="panel hidden"></div>
       </section>
     </main>
     <nav class="tabbar" aria-label="Main navigation">
-      <button class="tab active" data-view="today"><span class="nav-icon">⌂</span><span>Home</span></button>
-      <button class="tab" data-view="workers"><span class="nav-icon">♙</span><span>Workers</span></button>
-      <button class="tab" data-view="reports"><span class="nav-icon">▤</span><span>Reports</span></button>
-      <button class="tab" data-view="settlement"><span class="nav-icon">₹</span><span>Payments</span></button>
-      <button class="tab" id="moreBtn" aria-haspopup="true" aria-expanded="false"><span class="nav-icon">•••</span><span>More</span></button>
+      <button class="tab active" data-view="today"><span class="nav-icon">⌂</span><span>Today</span></button>
+      <button class="tab" data-view="calendar"><span class="nav-icon">▦</span><span>Calendar</span></button>
+      <button class="tab" data-view="pay"><span class="nav-icon">₹</span><span>Pay</span></button>
+      <button class="tab" data-view="workers"><span class="nav-icon">◍</span><span>Workers</span></button>
     </nav>
-    <div id="sheetBackdrop" class="sheet-backdrop"></div>
-    <div id="moreSheet" class="sheet" role="menu">
-      <div class="grabber"></div>
-      <button class="tab" data-view="month"><span class="nav-icon">▦</span><span>This month</span></button>
-      <button class="tab" data-view="history"><span class="nav-icon">◷</span><span>History</span></button>
-      <button class="tab" data-view="household"><span class="nav-icon">⌂</span><span>Household</span></button>
+
+    <div id="householdOverlay" class="household-overlay hidden">
+      <button class="back-btn" id="closeHousehold">← Back</button>
+      <main id="householdPanel" style="padding:4px 16px 40px"></main>
     </div>
+
+    <div id="sheetBackdrop" class="sheet-backdrop"></div>
+    <div class="sheet" id="attendanceSheet">
+      <div class="grabber"></div>
+      <div class="sheet-header">
+        <div class="avatar" id="sheetAvatar" style="width:44px;height:44px"></div>
+        <div><div class="name" id="sheetName"></div><div class="sub" id="sheetSub"></div></div>
+      </div>
+      <div class="shift-toggle hidden" id="shiftToggle">
+        <button data-shift="morning">Morning</button>
+        <button data-shift="evening">Evening</button>
+      </div>
+      <div class="state-grid">
+        <button class="state-btn present" data-state="present"><span class="ic">✓</span>Present</button>
+        <button class="state-btn absent" data-state="absent"><span class="ic">✕</span>Absent</button>
+        <button class="state-btn leave" data-state="leave"><span class="ic">☾</span>Leave</button>
+      </div>
+      <p class="sheet-note">Half Day is worked out automatically once both shifts are marked.</p>
+    </div>
+
     <div id="toast" class="toast hidden" role="alert"></div>
     <div id="modal" class="modal hidden" aria-modal="true" role="dialog"><div class="modal-card"><button id="closeModal" class="close-btn" aria-label="Close">×</button><div id="modalContent"></div></div></div>
   </div>
-  <script type="module" src="app.js?v=4"></script><script type="module" src="settlement.js?v=4"></script><script type="module" src="history.js?v=4"></script><script type="module" src="navigation.js?v=4"></script>
+  <script type="module" src="app.js?v=5"></script><script type="module" src="settlement.js?v=5"></script><script type="module" src="navigation.js?v=5"></script>
 </body>
 </html>
