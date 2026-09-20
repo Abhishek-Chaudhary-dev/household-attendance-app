@@ -325,21 +325,25 @@ function addWorkerModal(){
     <form id="wf" class="form-grid">
       <label>What's their name?<input name="name" required placeholder="e.g. Kamla"></label>
       <label>What do they do?<input name="role" placeholder="e.g. Housemaid, Cook, Driver"></label>
+      <label>How many visits a day?
+        <div class="toggle-row"><button type="button" class="active" data-shift="single">One</button><button type="button" data-shift="double">Two (morning &amp; evening)</button></div>
+      </label>
       <label>How do you pay them?
         <div class="toggle-row"><button type="button" class="active" data-pay="daily">Daily</button><button type="button" data-pay="monthly">Monthly</button></div>
       </label>
       <label id="rateLabel">Daily rate (₹)<input name="rate" type="number" min="0" step="1" required></label>
       <div class="form-actions"><button type="button" class="secondary-btn" id="cancel">Cancel</button><button class="primary-btn">Save</button></div>
     </form>
-    <p class="link-btn">Shift pattern, leave allowance and other details can be added from Worker Details later.</p>`;
+    <p class="link-btn">Leave allowance and other details can be added from Worker Details later.</p>`;
   $("#modal").classList.remove("hidden");
   $("#cancel").onclick=()=>$("#modal").classList.add("hidden");
-  let payType="daily";
-  $$('[data-pay]').forEach(b=>b.onclick=()=>{payType=b.dataset.pay;$$('[data-pay]').forEach(x=>x.classList.toggle("active",x===b));$("#rateLabel").innerHTML=(payType==="monthly"?"Monthly amount (₹)":"Daily rate (₹)")+`<input name="rate" type="number" min="0" step="1" required>`});
+  let payType="daily", shiftType_="single";
+  $$('#modalContent [data-shift]').forEach(b=>b.onclick=()=>{shiftType_=b.dataset.shift;$$('#modalContent [data-shift]').forEach(x=>x.classList.toggle("active",x===b))});
+  $$('#modalContent [data-pay]').forEach(b=>b.onclick=()=>{payType=b.dataset.pay;$$('#modalContent [data-pay]').forEach(x=>x.classList.toggle("active",x===b));$("#rateLabel").innerHTML=(payType==="monthly"?"Monthly amount (₹)":"Daily rate (₹)")+`<input name="rate" type="number" min="0" step="1" required>`});
   $("#wf").onsubmit=async e=>{
     e.preventDefault();
     const f=new FormData(e.target), rate=Number(f.get("rate")||0);
-    const data={name:String(f.get("name")).trim(),role:String(f.get("role")).trim(),shiftType:"single",monthlyPaidLeaves:2,paymentPolicy:"deduct",active:true,
+    const data={name:String(f.get("name")).trim(),role:String(f.get("role")).trim(),shiftType:shiftType_,monthlyPaidLeaves:2,paymentPolicy:"deduct",active:true,
       payType, dailyRate: payType==="daily"?rate:0, monthlySalary: payType==="monthly"?rate:0, updatedAt:serverTimestamp()};
     if(!data.name) return;
     try{ await addDoc(path("workers"),{...data,createdAt:serverTimestamp()}); $("#modal").classList.add("hidden"); await load(); toast("Worker added") }
@@ -355,7 +359,7 @@ function addWorkerModal(){
    appearance of real data for them.
    ========================================================================= */
 let detailWorkerId=null, detailTab="details", editing=false, moreInfoOpen=false;
-function openDetails(id){ detailWorkerId=id; detailTab="details"; editing=false; moreInfoOpen=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); }
+function openDetails(id){ const w=findWorker(id); detailWorkerId=id; detailTab="details"; editing=false; moreInfoOpen=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); const t=$("#screenTitle"); if(t&&w) t.textContent=w.name; }
 function closeDetails(){ $("#detailsPanel").classList.add("hidden"); window.selectView("workers"); }
 function setDetailTab(tab){ detailTab=tab; editing=false; renderDetails(); }
 function toggleMoreInfo(){ moreInfoOpen=!moreInfoOpen; renderDetails(); }

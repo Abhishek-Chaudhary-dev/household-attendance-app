@@ -42,7 +42,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent;border:0;backgroun
 main{padding:16px 16px 100px;position:relative;z-index:1}
 .view.hidden{display:none}
 .panel.hidden{display:none}
-.screen-motif{position:absolute;top:4px;right:14px;width:78px;height:60px;opacity:.10;pointer-events:none;z-index:0}
+.screen-motif{position:absolute;top:4px;right:14px;width:96px;height:74px;opacity:.22;pointer-events:none;z-index:0}
 .screen-motif svg{width:100%;height:100%}
 
 .greeting-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;position:relative;z-index:1}
