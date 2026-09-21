@@ -36,6 +36,44 @@ async function loadData(){if(!user)return;try{householdId=householdId||await res
 function outstandingAdvancesFor(workerId, monthKey){
   return advances.filter(a=>a.workerId===workerId && a.recoveryMonth===monthKey && (a.amount-a.recoveredAmount)>0.001);
 }
+const currentMonthKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`};
+
+// Month-to-date payable — a genuinely separate figure from calculate()'s
+// full-month settlement amount, added specifically so a worker asking for
+// salary mid-month can be answered instantly without waiting for month-end.
+// Deliberately NOT built by re-calling calculate() with end=today: that
+// function's daily-allocation divisor is the length of whatever range you
+// pass it, so a partial range would silently double the effective daily
+// rate. Daily-rate workers don't have this problem — their existing formula
+// is already naturally prorated by attendance — so they reuse calculate()
+// directly. Only monthly-salary workers need this separate calculation,
+// which reuses the same present/leave shift-counting approach, just scoped
+// to month-start -> today instead of the whole month, with the daily
+// allocation still based on the FULL month's length (consistent with the
+// rate already shown elsewhere on the card).
+// Also nets out any outstanding advance for this recovery month, capped at
+// whatever's been earned so far — the honest answer to "how much do I owe
+// you right now" has to account for money already advanced, or the figure
+// would overstate what should actually change hands.
+function monthToDatePayable(w, monthKey){
+  if(monthKey!==currentMonthKey()) return null; // only meaningful for the month actually in progress
+  const today=iso(new Date());
+  let gross;
+  if(w.payType==="monthly"){
+    const rows=attendance.filter(a=>a.workerId===w.id&&a.date>=monthStart(monthKey)&&a.date<=today),single=(w.shiftType??"double")==="single";
+    const presentShifts=rows.reduce((n,a)=>n+(a.morning==="present")+(single?0:a.evening==="present"),0);
+    const leaveShifts=rows.reduce((n,a)=>n+(a.morning==="leave")+(single?0:a.evening==="leave"),0);
+    const divisor=single?1:2, presentDays=presentShifts/divisor, leaveDays=leaveShifts/divisor;
+    const paidLeaveDays=Math.min(leaveDays, Number(w.monthlyPaidLeaves??2));
+    const fullMonthDays=Math.max(1,Math.floor((parseDate(monthEnd(monthKey))-parseDate(monthStart(monthKey)))/86400000)+1);
+    const dailyAllocation=Number(w.monthlySalary||0)/fullMonthDays;
+    gross=Math.max(0, dailyAllocation*(presentDays+paidLeaveDays));
+  } else {
+    gross=calculate(w, monthStart(monthKey), today).finalPayment;
+  }
+  const outstanding=outstandingAdvancesFor(w.id, monthKey).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0);
+  return Math.max(0, gross - Math.min(gross, outstanding));
+}
 function calcWorkerFull(w, monthKey){
   const base=calculate(w, monthStart(monthKey), monthEnd(monthKey));
   const outstanding=outstandingAdvancesFor(w.id, monthKey);
@@ -44,7 +82,8 @@ function calcWorkerFull(w, monthKey){
   const paymentRec=payments.find(p=>p.workerId===w.id && p.month===monthKey);
   const actualPaid = paymentRec ? Number(paymentRec.actualPaid||0) : null;
   let status="unpaid"; if(actualPaid!=null){ status = actualPaid<=0 ? "unpaid" : actualPaid>=finalAmount ? "paid" : "partial"; }
-  return {...base, outstanding, advanceRecovery, finalAmount, actualPaid, status, paymentRec};
+  const monthToDate=monthToDatePayable(w, monthKey);
+  return {...base, outstanding, advanceRecovery, finalAmount, actualPaid, status, paymentRec, monthToDate};
 }
 
 // Advance recovery is only ever committed to Firestore at the moment a
@@ -154,6 +193,7 @@ function render(){
           <div class="chip"><div class="n">${c.leaveDays}</div><div class="l">Leave</div></div>
           <div class="chip"><div class="n">${c.absentDays}</div><div class="l">Absent</div></div>
         </div>
+        ${c.monthToDate!=null ? `<div class="mtd-box"><div class="lbl">PAYABLE TILL TODAY (${parseDate(iso(new Date())).toLocaleDateString(undefined,{day:"numeric",month:"short"})})${outstandingAdvancesFor(w.id,selectedMonth).length?' · after advance':''}</div><div class="amt">${money(c.monthToDate)}</div></div>` : ""}
         ${c.paymentMethod==="monthly" ? `
           <div class="calc-line"><span>Monthly salary</span><span>${money(c.monthlySalary)}</span></div>
           <div class="calc-line"><span>Daily allocation</span><span>${money(c.monthlySalary/c.days)}</span></div>
