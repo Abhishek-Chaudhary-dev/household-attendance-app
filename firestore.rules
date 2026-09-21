@@ -48,6 +48,12 @@ service cloud.firestore {
       match /settlements/{settlementId} {
         allow read, write: if isMember(householdId);
       }
+      match /advances/{advanceId} {
+        allow read, write: if isMember(householdId);
+      }
+      match /payments/{paymentId} {
+        allow read, write: if isMember(householdId);
+      }
     }
   }
 }
