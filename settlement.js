@@ -9,6 +9,7 @@ const parseDate=s=>{const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1
 const iso=d=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`};
 const monthStart=k=>`${k}-01`;const monthEnd=k=>{const[y,m]=k.split("-").map(Number);return iso(new Date(y,m,0))};
 const monthLabel=k=>parseDate(`${k}-01`).toLocaleDateString(undefined,{month:"long",year:"numeric"});
+const monthShort=k=>parseDate(`${k}-01`).toLocaleDateString(undefined,{month:"short"});
 const months=()=>{const out=[],d=new Date();for(let i=0;i<18;i++){out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);d.setMonth(d.getMonth()-1)}return out};
 let user=null,householdId=null,workers=[],attendance=[],advances=[],payments=[],selectedMonth=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
 const normEmail=e=>String(e||"").trim().toLowerCase();
@@ -108,9 +109,10 @@ function openMtdInfo(workerId){
   let modal=$("#calcInfoModal");
   if(!modal){
     modal=document.createElement("div"); modal.id="calcInfoModal"; modal.className="confirm-backdrop hidden";
-    modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="calcInfoTitle"></h3><div id="calcInfoBody" class="calc-info-body"></div><button class="btn-cancel" id="calcInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
+    modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="calcInfoTitle"></h3><div id="calcInfoBody" class="calc-info-body"></div><button class="primary-btn" id="calcInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
     document.getElementById("app")?.appendChild(modal) || document.body.appendChild(modal);
     $("#calcInfoClose").onclick=()=>modal.classList.add("hidden");
+    modal.onclick=e=>{ if(e.target===modal) modal.classList.add("hidden"); };
   }
   $("#calcInfoTitle").textContent=`How ${w.name}'s pay till today is worked out`;
   $("#calcInfoBody").innerHTML=explainMtd(w,m,selectedMonth);
@@ -176,6 +178,7 @@ function openAdvanceModal(preselectId){
     $("#advCancel").onclick=closeAdvanceModal;
     $("#advSave").onclick=saveAdvance;
     $("#advWorker").onchange=e=>renderAdvanceHistory(e.target.value);
+    modal.onclick=e=>{ if(e.target===modal) closeAdvanceModal(); };
   }
   const sel=$("#advWorker"); sel.innerHTML=workers.filter(w=>w.active!==false).map(w=>`<option value="${w.id}" ${w.id===preselectId?"selected":""}>${esc(w.name)}</option>`).join("");
   $("#advAmount").value=""; $("#advDate").value=iso(new Date());
@@ -212,7 +215,7 @@ function render(){
   const rows=active.map(w=>calcWorkerFull(w, selectedMonth));
   const total=rows.reduce((s,r)=>s+r.finalAmount,0);
   panel.innerHTML=`
-    <div class="month-select">${months().slice(0,6).map(k=>`<button class="${k===selectedMonth?"active":""}" data-pay-month="${k}">${monthLabel(k).split(" ")[0]}</button>`).join("")}</div>
+    <div class="month-select">${months().slice(0,6).map(k=>`<button class="${k===selectedMonth?"active":""}" data-pay-month="${k}">${monthShort(k)}</button>`).join("")}</div>
     <div class="pay-hero">
       <div class="lbl">TOTAL TO PAY THIS MONTH</div>
       <div class="amt">${money(total)}</div>
@@ -257,7 +260,7 @@ function render(){
         <div class="calc-line total"><span>Calculated payable</span><span>${money(c.basePayment-c.deduction)}</span></div>
         ${c.advanceRecovery>0?`<div class="calc-line advance-line"><span>Advance recovery</span><span>− ${money(c.advanceRecovery)}</span></div>`:""}
         ${outstandingAdvancesFor(w.id, selectedMonth).length
-          ? `<div class="advance-banner"><span><strong>${money(outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0))}</strong> advance to recover</span><span style="display:flex;gap:8px"><button class="add-advance-link" data-advance-view="${w.id}">View (${advances.filter(a=>a.workerId===w.id).length})</button><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></span></div>`
+          ? `<div class="advance-banner"><span><strong>${money(outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0))}</strong> advance to recover</span><span style="display:flex;gap:8px"><button class="add-advance-link" data-advance-view="${w.id}">View</button><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></span></div>`
           : `<div style="margin-top:8px"><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></div>`}
         <div class="final-amount-box"><div class="lbl">FINAL AMOUNT TO PAY</div><div class="amt">${money(c.finalAmount)}</div></div>
         <div class="payment-row">

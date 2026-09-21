@@ -292,7 +292,13 @@ function renderCalendar(){
     grid+=`<div class="cal-cell ${cls} ${isToday} ${sel}" data-cal-day="${d}" data-date="${r.date}">${d}</div>`;
   });
   html+=`<div class="cal-grid" id="calGrid">${grid}</div>`;
-  html+=`<div class="cal-legend"><span><i style="background:var(--green-tint)"></i>Present</span><span><i style="background:var(--red-tint)"></i>Absent</span><span><i style="background:var(--blue-tint)"></i>Leave</span><span><i style="background:var(--amber-tint)"></i>Half Day</span><span><i style="border:2px solid var(--green)"></i>Selected</span></div>`;
+  html+=`<div class="cal-legend">
+    <span><i style="background:var(--green-tint)"></i>Present<button class="calc-info-btn" data-legend-info="present" aria-label="What Present means">i</button></span>
+    <span><i style="background:var(--red-tint)"></i>Absent<button class="calc-info-btn" data-legend-info="absent" aria-label="What Absent means">i</button></span>
+    <span><i style="background:var(--blue-tint)"></i>Leave<button class="calc-info-btn" data-legend-info="leave" aria-label="What Leave means">i</button></span>
+    <span><i style="background:var(--amber-tint)"></i>Half Day<button class="calc-info-btn" data-legend-info="halfday" aria-label="What Half Day means">i</button></span>
+    <span><i style="border:2px solid var(--green)"></i>Selected<button class="calc-info-btn" data-legend-info="selected" aria-label="What Selected means">i</button></span>
+  </div>`;
   $("#calendarPanel").innerHTML=html;
   wireCalendarGesture();
   renderBulkBar();
@@ -358,6 +364,7 @@ function confirmBulkApply(){
   if(!backdrop){ backdrop=document.createElement("div"); backdrop.id="confirmBackdrop"; backdrop.className="confirm-backdrop hidden";
     backdrop.innerHTML=`<div class="confirm-card"><h3 id="confirmTitle"></h3><p id="confirmBody"></p><div class="confirm-actions" id="confirmActions"></div></div>`;
     document.getElementById("app").appendChild(backdrop);
+    backdrop.onclick=e=>{ if(e.target===backdrop) closeConfirm(); };
   }
   const label={present:"Present",absent:"Absent",leave:"Leave",halfday:"Half Day"}[chosenBulkState];
   if(already.length){
@@ -372,6 +379,29 @@ function confirmBulkApply(){
   backdrop.classList.remove("hidden");
 }
 function closeConfirm(){ const b=$("#confirmBackdrop"); if(b) b.classList.add("hidden"); }
+
+// Plain-English, one-line explanations for the Calendar legend's (i) buttons.
+const legendInfoText={
+  present:"The worker came in and did their shift that day.",
+  absent:"The worker did not come in that day.",
+  leave:"The worker took a planned day off. The first few leave days each month are paid — extra ones beyond that aren't.",
+  halfday:"The worker only did one of their two shifts that day, so it counts as half a working day. This is worked out automatically — it's never entered directly.",
+  selected:"This date is picked right now so you can mark it. It's just a selection, not an attendance status."
+};
+function openLegendInfo(key){
+  let modal=$("#legendInfoModal");
+  if(!modal){
+    modal=document.createElement("div"); modal.id="legendInfoModal"; modal.className="confirm-backdrop hidden";
+    modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="legendInfoTitle"></h3><div id="legendInfoBody" class="calc-info-body"></div><button class="primary-btn" id="legendInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
+    document.getElementById("app")?.appendChild(modal) || document.body.appendChild(modal);
+    $("#legendInfoClose").onclick=()=>modal.classList.add("hidden");
+    modal.onclick=e=>{ if(e.target===modal) modal.classList.add("hidden"); };
+  }
+  const titles={present:"Present",absent:"Absent",leave:"Leave",halfday:"Half Day",selected:"Selected"};
+  $("#legendInfoTitle").textContent=titles[key]||key;
+  $("#legendInfoBody").innerHTML=`<p>${legendInfoText[key]||""}</p>`;
+  modal.classList.remove("hidden");
+}
 async function applyBulk(includeAlreadyMarked){
   const w=findWorker(calWorkerId); if(!w||!chosenBulkState) return;
   const dates=[...selectedDates];
@@ -550,6 +580,7 @@ window.__onViewChanged=(view)=>{
 $("#googleSignInBtn").onclick=async()=>{try{await signInWithPopup(auth,provider)}catch(e){error("Google sign-in failed",e.message)}};
 $("#refreshBtn").onclick=()=>{closeAccountMenu();load()};
 $("#closeModal").onclick=()=>$("#modal").classList.add("hidden");
+$("#modal").onclick=e=>{ if(e.target.id==="modal") $("#modal").classList.add("hidden"); };
 $("#accountBtn").onclick=e=>{e.stopPropagation();const m=$("#accountMenu"),willOpen=m.classList.contains("hidden");m.classList.toggle("hidden");$("#accountBtn").setAttribute("aria-expanded",String(willOpen))};
 document.addEventListener("click",()=>closeAccountMenu());
 $("#householdBtn").onclick=()=>{closeAccountMenu();renderHousehold();$("#householdOverlay").classList.remove("hidden")};
@@ -574,6 +605,8 @@ document.addEventListener("click",e=>{
   if(bulkApplyBtn && chosenBulkState){ confirmBulkApply(); return; }
   const closeConfirmBtn=e.target.closest('[data-action="close-confirm"]');
   if(closeConfirmBtn){ closeConfirm(); return; }
+  const legendInfoBtn=e.target.closest("[data-legend-info]");
+  if(legendInfoBtn){ openLegendInfo(legendInfoBtn.dataset.legendInfo); return; }
   const applyBulkBtn=e.target.closest('[data-action="apply-bulk"]');
   if(applyBulkBtn){ applyBulk(applyBulkBtn.dataset.include==="true"); return; }
   const detailsBtn=e.target.closest("[data-open-details]");

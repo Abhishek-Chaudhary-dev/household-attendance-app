@@ -35,7 +35,16 @@
     </header>
     <main>
       <section id="loginView" class="view hidden"><div class="welcome-card"><div class="brand-mark">✓</div><p class="eyebrow">HOUSEHOLD ATTENDANCE</p><h2>Keep attendance and payments simple.</h2><p>Sign in with Google to keep your household data safely synced.</p><button id="googleSignInBtn" class="primary-btn">Continue with Google</button></div></section>
-      <section id="loadingView" class="view"><div class="loading-card"><div class="spinner"></div><p>Refreshing household data…</p></div></section>
+      <section id="loadingView" class="view"><div class="loading-card">
+        <svg class="loading-anim" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="6" width="5" height="12" rx="2.5" fill="var(--green)"/>
+          <rect x="41" y="6" width="5" height="12" rx="2.5" fill="var(--green)"/>
+          <rect x="9" y="14" width="46" height="42" rx="7" fill="var(--surface)" stroke="var(--green)" stroke-width="2.5"/>
+          <rect x="9" y="14" width="46" height="13" rx="7" fill="var(--green)"/>
+          <path class="loading-check" d="M20 36 L29 45 L46 24" fill="none" stroke="var(--green)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p>Refreshing household data…</p>
+      </div></section>
       <section id="mainView" class="view hidden">
         <div id="staleBanner" class="notice hidden"></div>
         <div id="todayPanel" class="panel"></div><div id="calendarPanel" class="panel hidden"></div><div id="payPanel" class="panel hidden"></div><div id="workersPanel" class="panel hidden"></div><div id="detailsPanel" class="panel hidden"></div>
