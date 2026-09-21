@@ -131,7 +131,6 @@ function render(){
   const rows=active.map(w=>calcWorkerFull(w, selectedMonth));
   const total=rows.reduce((s,r)=>s+r.finalAmount,0);
   panel.innerHTML=`
-    <h1 class="disp" style="font-size:19px;margin-bottom:14px">Pay</h1>
     <div class="month-select">${months().slice(0,6).map(k=>`<button class="${k===selectedMonth?"active":""}" data-pay-month="${k}">${monthLabel(k).split(" ")[0]}</button>`).join("")}</div>
     <div class="pay-hero">
       <div class="lbl">TOTAL TO PAY THIS MONTH</div>
