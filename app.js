@@ -293,7 +293,6 @@ function renderCalendar(){
   });
   html+=`<div class="cal-grid" id="calGrid">${grid}</div>`;
   html+=`<div class="cal-legend"><span><i style="background:var(--green-tint)"></i>Present</span><span><i style="background:var(--red-tint)"></i>Absent</span><span><i style="background:var(--blue-tint)"></i>Leave</span><span><i style="background:var(--amber-tint)"></i>Half Day</span><span><i style="border:2px solid var(--green)"></i>Selected</span></div>`;
-  html+=`<p class="cal-hint">Tap a date to select it, tap again to deselect. Drag across dates to select a range.</p>`;
   $("#calendarPanel").innerHTML=html;
   wireCalendarGesture();
   renderBulkBar();
@@ -456,11 +455,10 @@ function addWorkerModal(){
    address/notes fields in the schema, and we don't fabricate the
    appearance of real data for them.
    ========================================================================= */
-let detailWorkerId=null, detailTab="details", editing=false, moreInfoOpen=false;
-function openDetails(id){ const w=findWorker(id); detailWorkerId=id; detailTab="details"; editing=false; moreInfoOpen=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); const t=$("#screenTitle"); if(t&&w) t.textContent=w.name; }
+let detailWorkerId=null, detailTab="details", editing=false;
+function openDetails(id){ const w=findWorker(id); detailWorkerId=id; detailTab="details"; editing=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); const t=$("#screenTitle"); if(t&&w) t.textContent=w.name; }
 function closeDetails(){ $("#detailsPanel").classList.add("hidden"); window.selectView("workers"); }
 function setDetailTab(tab){ detailTab=tab; editing=false; renderDetails(); }
-function toggleMoreInfo(){ moreInfoOpen=!moreInfoOpen; renderDetails(); }
 function renderDetails(){
   const w=findWorker(detailWorkerId); if(!w){ closeDetails(); return; }
   let html=`<button class="secondary-btn" data-action="close-details" style="margin-bottom:12px">← Back</button>
@@ -495,10 +493,6 @@ function renderDetails(){
         <div class="detail-row"><span>Paid leave/month</span><span>${w.monthlyPaidLeaves??2} days</span></div>
         <div class="detail-row"><span>Pay</span><span>${payLine(w)}</span></div>
         <div class="detail-row"><span>If leave exceeds allowance</span><span>${w.paymentPolicy==="full"?"Still paid in full":"Deducted"}</span></div>
-        <button class="more-info-toggle" data-action="toggle-more-info">${moreInfoOpen?"Hide contact info":"Contact info"} <span>${moreInfoOpen?"▲":"▼"}</span></button>
-        ${moreInfoOpen?`<p class="placeholder-note">This app doesn't store contact details yet — nothing real is shown here.</p>
-          <div class="detail-row"><span>Phone</span><span class="empty-field">Not added</span></div>
-          <div class="detail-row"><span>Address</span><span class="empty-field">Not added</span></div>`:""}
       </div>${editBtn}`;
     }
   } else if(detailTab==="history"){
@@ -588,8 +582,6 @@ document.addEventListener("click",e=>{
   if(closeDetailsBtn){ closeDetails(); return; }
   const detailTabBtn=e.target.closest("[data-detail-tab]");
   if(detailTabBtn){ setDetailTab(detailTabBtn.dataset.detailTab); return; }
-  const moreInfoBtn=e.target.closest('[data-action="toggle-more-info"]');
-  if(moreInfoBtn){ toggleMoreInfo(); return; }
   const memberRemoveBtn=e.target.closest("[data-member-remove]");
   if(memberRemoveBtn){ removeMember(memberRemoveBtn.dataset.memberRemove); return; }
   const addBtn=e.target.closest('[data-action="add"]');

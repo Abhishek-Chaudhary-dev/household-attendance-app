@@ -166,7 +166,7 @@ function render(){
         <div class="calc-line total"><span>Calculated payable</span><span>${money(c.basePayment-c.deduction)}</span></div>
         ${c.advanceRecovery>0?`<div class="calc-line advance-line"><span>Advance recovery</span><span>− ${money(c.advanceRecovery)}</span></div>`:""}
         ${outstandingAdvancesFor(w.id, selectedMonth).length
-          ? `<div class="advance-banner"><span><strong>${money(outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0))}</strong> advance to recover</span><button class="add-advance-link" data-advance-worker="${w.id}">View / Add</button></div>`
+          ? `<div class="advance-banner"><span><strong>${money(outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0))}</strong> advance to recover</span><span style="display:flex;gap:8px"><button class="add-advance-link" data-advance-view="${w.id}">View (${advances.filter(a=>a.workerId===w.id).length})</button><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></span></div>`
           : `<div style="margin-top:8px"><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></div>`}
         <div class="final-amount-box"><div class="lbl">FINAL AMOUNT TO PAY</div><div class="amt">${money(c.finalAmount)}</div></div>
         <div class="payment-row">
@@ -179,6 +179,7 @@ function render(){
   `;
   $$("[data-pay-month]").forEach(b=>b.onclick=()=>{selectedMonth=b.dataset.payMonth;render()});
   $$("[data-advance-worker]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceWorker));
+  $$("[data-advance-view]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceView));
   $$("[data-record-payment]").forEach(b=>b.onclick=()=>recordPayment(b.dataset.recordPayment));
 }
 window.renderPay=render; // exposed so app.js can trigger a re-render after actions like adding a worker
