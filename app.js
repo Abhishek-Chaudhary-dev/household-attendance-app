@@ -279,7 +279,7 @@ function dayCombinedStatus(w,r){
 function renderCalendar(){
   const active=state.workers.filter(w=>w.active!==false);
   if(!calWorkerId || !active.find(w=>w.id===calWorkerId)) calWorkerId=active[0]?.id||null;
-  let html=`<h1 class="disp" style="font-size:19px;margin-bottom:14px">Calendar</h1>`;
+  let html=``;
   if(!active.length){ html+=`<div class="empty-state"><p>Add a worker first to see their calendar.</p></div>`; $("#calendarPanel").innerHTML=html; renderBulkBar(); return; }
   html+=`<div class="worker-selector">${active.map(w=>`<button class="worker-chip ${w.id===calWorkerId?"active":""}" data-cal-worker="${w.id}">${makeAvatar(w,42)}<span>${esc(w.name)}</span></button>`).join("")}</div>`;
   const monthLabel=new Date(calYear,calMonthIdx,1).toLocaleDateString(undefined,{month:"long",year:"numeric"});
