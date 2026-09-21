@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider();
@@ -261,13 +261,26 @@ async function selectState(state_){
 
 /* =========================================================================
    CALENDAR — worker- and date-aware, built on the existing monthRows().
+   Bulk multi-date selection (tap / drag-range) replaces the old single-day
+   detail panel: selecting exactly one date and applying a status achieves
+   the same outcome the old "tap date -> change status" flow did, so this
+   is a consolidation, not a removed capability.
    ========================================================================= */
-let calWorkerId=null, calYear=new Date().getFullYear(), calMonthIdx=new Date().getMonth(), calSelectedDay=new Date().getDate();
+let calWorkerId=null, calYear=new Date().getFullYear(), calMonthIdx=new Date().getMonth();
+let selectedDates=new Set(); // 'YYYY-MM-DD' — bulk selection, separate from attendance status
+let dragging=false, dragAnchorDay=null, dragLastDay=null, dragAdding=true, dragGestureCells=new Set(), dragGestureBaseline=new Set();
+let chosenBulkState=null;
+
+function dayCombinedStatus(w,r){
+  const vals=[r.morning, shiftType(w)==="single"?null:r.evening].filter(Boolean);
+  if(vals.includes("unmarked")||!vals.length) return "";
+  if(vals.every(v=>v==="present")) return "present"; if(vals.every(v=>v==="leave")) return "leave"; if(vals.every(v=>v==="absent")) return "absent"; return "halfday";
+}
 function renderCalendar(){
   const active=state.workers.filter(w=>w.active!==false);
   if(!calWorkerId || !active.find(w=>w.id===calWorkerId)) calWorkerId=active[0]?.id||null;
   let html=`<h1 class="disp" style="font-size:19px;margin-bottom:14px">Calendar</h1>`;
-  if(!active.length){ html+=`<div class="empty-state"><p>Add a worker first to see their calendar.</p></div>`; $("#calendarPanel").innerHTML=html; return; }
+  if(!active.length){ html+=`<div class="empty-state"><p>Add a worker first to see their calendar.</p></div>`; $("#calendarPanel").innerHTML=html; renderBulkBar(); return; }
   html+=`<div class="worker-selector">${active.map(w=>`<button class="worker-chip ${w.id===calWorkerId?"active":""}" data-cal-worker="${w.id}">${makeAvatar(w,42)}<span>${esc(w.name)}</span></button>`).join("")}</div>`;
   const monthLabel=new Date(calYear,calMonthIdx,1).toLocaleDateString(undefined,{month:"long",year:"numeric"});
   html+=`<div class="month-nav"><button data-cal-nav="-1">‹</button><div class="lbl">${monthLabel}</div><button data-cal-nav="1">›</button></div>`;
@@ -275,31 +288,116 @@ function renderCalendar(){
   const w=findWorker(calWorkerId), rows=monthRows(w,calYear,calMonthIdx), firstDow=new Date(calYear,calMonthIdx,1).getDay(), today=iso(new Date());
   let grid=""; for(let i=0;i<firstDow;i++) grid+='<div class="cal-cell empty"></div>';
   rows.forEach((r,i)=>{
-    const d=i+1, vals=[r.morning, shiftType(w)==="single"?null:r.evening].filter(Boolean);
-    let cls="";
-    if(!vals.includes("unmarked")&&vals.length){
-      if(vals.every(v=>v==="present")) cls="present"; else if(vals.every(v=>v==="leave")) cls="leave"; else if(vals.every(v=>v==="absent")) cls="absent"; else cls="halfday";
-    }
-    const isToday = r.date===today ? "today-mark" : "";
-    grid+=`<div class="cal-cell ${cls} ${isToday} ${d===calSelectedDay?"selected":""}" data-cal-day="${d}">${d}</div>`;
+    const d=i+1, cls=dayCombinedStatus(w,r), isToday = r.date===today ? "today-mark" : "", sel=selectedDates.has(r.date)?"selected":"";
+    grid+=`<div class="cal-cell ${cls} ${isToday} ${sel}" data-cal-day="${d}" data-date="${r.date}">${d}</div>`;
   });
-  html+=`<div class="cal-grid">${grid}</div>`;
+  html+=`<div class="cal-grid" id="calGrid">${grid}</div>`;
+  html+=`<div class="cal-legend"><span><i style="background:var(--green-tint)"></i>Present</span><span><i style="background:var(--red-tint)"></i>Absent</span><span><i style="background:var(--blue-tint)"></i>Leave</span><span><i style="background:var(--amber-tint)"></i>Half Day</span><span><i style="border:2px solid var(--green)"></i>Selected</span></div>`;
+  html+=`<p class="cal-hint">Tap a date to select it, tap again to deselect. Drag across dates to select a range.</p>`;
   $("#calendarPanel").innerHTML=html;
-  renderDateDetail();
+  wireCalendarGesture();
+  renderBulkBar();
 }
-function renderDateDetail(){
-  const w=findWorker(calWorkerId); if(!w) return;
-  const date=iso(new Date(calYear,calMonthIdx,calSelectedDay)), today=iso(new Date());
-  const dateLabel = date===today ? "Today" : parseDate(date).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
-  const rows = shiftType(w)==="double" ? [["Morning","morning"],["Evening","evening"]] : [["Today","morning"]];
-  const html=`<div class="date-detail"><div class="top">${dateLabel} · ${esc(w.name)}</div>
-    ${rows.map(([label,shift])=>{ const v=shiftValue(w.id,date,shift), m=statusMeta[v];
-      return `<div class="shift-detail-row"><span class="lbl">${label}</span>
-        <button data-open-sheet="${w.id}" data-date="${date}" data-shift="${shift}">
-          <span class="status-pill ${m.cls}">${m.label}</span><span class="edit-chevron">›</span>
-        </button></div>`;
-    }).join("")}</div>`;
-  const existing=$("#calendarPanel .date-detail"); if(existing) existing.outerHTML=html; else $("#calendarPanel").insertAdjacentHTML("beforeend",html);
+
+/* ---- Bulk selection: tap / drag-range, with correct shrink-back on reversal ---- */
+function endDrag(){ dragging=false; dragAnchorDay=null; dragLastDay=null; }
+document.addEventListener("pointerup", endDrag); // registered once, not per-render
+function dateForDay(d){ const dd=new Date(calYear,calMonthIdx,d); return iso(dd); }
+function toggleOneDate(ds,add){ if(add) selectedDates.add(ds); else selectedDates.delete(ds); }
+function applyDragRange(a,b,add){
+  const lo=Math.min(a,b), hi=Math.max(a,b), newRange=new Set();
+  for(let d=lo; d<=hi; d++) newRange.add(dateForDay(d));
+  dragGestureCells.forEach(ds=>{ if(!newRange.has(ds)) toggleOneDate(ds, dragGestureBaseline.has(ds)); });
+  newRange.forEach(ds=>toggleOneDate(ds, add));
+  dragGestureCells=newRange;
+}
+function wireCalendarGesture(){
+  const grid=$("#calGrid"); if(!grid) return;
+  grid.onpointerdown=e=>{
+    const cell=e.target.closest(".cal-cell:not(.empty)"); if(!cell) return;
+    e.preventDefault();
+    dragging=true; dragAnchorDay=+cell.dataset.calDay; dragLastDay=dragAnchorDay;
+    dragAdding=!selectedDates.has(cell.dataset.date);
+    dragGestureCells=new Set(); dragGestureBaseline=new Set(selectedDates);
+    toggleOneDate(cell.dataset.date, dragAdding); dragGestureCells.add(cell.dataset.date);
+    cell.classList.toggle("selected", selectedDates.has(cell.dataset.date));
+    renderBulkBar();
+  };
+  grid.onpointermove=e=>{
+    if(!dragging) return;
+    const el=document.elementFromPoint(e.clientX,e.clientY), cell=el?.closest?.(".cal-cell:not(.empty)"); if(!cell) return;
+    const day=+cell.dataset.calDay; if(day===dragLastDay) return;
+    dragLastDay=day; applyDragRange(dragAnchorDay, day, dragAdding);
+    $$(".cal-cell[data-date]").forEach(c=>c.classList.toggle("selected", selectedDates.has(c.dataset.date)));
+    renderBulkBar();
+  };
+  grid.onpointerup=endDrag; grid.onpointerleave=()=>{};
+}
+function clearSelection(){ selectedDates.clear(); chosenBulkState=null; renderCalendar(); }
+
+function renderBulkBar(){
+  let bar=$("#bulkBar");
+  if(!bar){ bar=document.createElement("div"); bar.id="bulkBar"; bar.className="bulk-bar hidden"; document.getElementById("app").appendChild(bar); }
+  const n=selectedDates.size;
+  bar.classList.toggle("hidden", n===0);
+  if(n===0){ chosenBulkState=null; return; }
+  const w=findWorker(calWorkerId);
+  const states=[["present","✓","Present"],["absent","✕","Absent"],["leave","☾","Leave"]];
+  if(w && shiftType(w)==="double") states.push(["halfday","◐","Half Day"]);
+  bar.innerHTML=`<div class="bulk-count"><span>${n} day${n===1?"":"s"} selected</span><button data-action="clear-selection">Clear</button></div>
+    <div class="bulk-states ${states.length===3?"three":""}">${states.map(([key,ic,label])=>`<button class="bulk-state-btn ${key} ${chosenBulkState===key?"chosen":""}" data-bulk-state="${key}"><span>${ic}</span>${label}</button>`).join("")}</div>
+    <button class="bulk-apply-btn" id="bulkApplyBtn" ${chosenBulkState?"":"disabled"}>${chosenBulkState?`Apply to ${n} day${n===1?"":"s"}`:"Choose a status above"}</button>`;
+}
+function chooseBulkState(key){ chosenBulkState=key; renderBulkBar(); }
+
+/* ---- Existing-attendance protection, then a real batched Firestore write ---- */
+function confirmBulkApply(){
+  const w=findWorker(calWorkerId); if(!w||!chosenBulkState) return;
+  const dates=[...selectedDates];
+  const already=dates.filter(ds=>{ const rec=att(w.id,ds); if(!rec) return false; return shiftType(w)==="single" ? rec.morning!=="unmarked" && rec.morning!=null : (rec.morning&&rec.morning!=="unmarked") || (rec.evening&&rec.evening!=="unmarked"); });
+  let backdrop=$("#confirmBackdrop");
+  if(!backdrop){ backdrop=document.createElement("div"); backdrop.id="confirmBackdrop"; backdrop.className="confirm-backdrop hidden";
+    backdrop.innerHTML=`<div class="confirm-card"><h3 id="confirmTitle"></h3><p id="confirmBody"></p><div class="confirm-actions" id="confirmActions"></div></div>`;
+    document.getElementById("app").appendChild(backdrop);
+  }
+  const label={present:"Present",absent:"Absent",leave:"Leave",halfday:"Half Day"}[chosenBulkState];
+  if(already.length){
+    $("#confirmTitle").textContent=`${already.length} of ${dates.length} days already have attendance`;
+    $("#confirmBody").textContent=`Replace those entries too, or only fill in the ${dates.length-already.length} blank day${dates.length-already.length===1?"":"s"}?`;
+    $("#confirmActions").innerHTML=`<button class="btn-cancel" data-action="close-confirm">Cancel</button><button class="btn-confirm" data-action="apply-bulk" data-include="false">Only blank days</button><button class="btn-danger" data-action="apply-bulk" data-include="true">Replace all</button>`;
+  } else {
+    $("#confirmTitle").textContent=`Mark ${dates.length} day${dates.length===1?"":"s"} as ${label}?`;
+    $("#confirmBody").textContent=`This will create attendance for ${dates.length} day${dates.length===1?"":"s"} for ${esc(w.name)}.`;
+    $("#confirmActions").innerHTML=`<button class="btn-cancel" data-action="close-confirm">Cancel</button><button class="btn-confirm" data-action="apply-bulk" data-include="true">Mark ${label}</button>`;
+  }
+  backdrop.classList.remove("hidden");
+}
+function closeConfirm(){ const b=$("#confirmBackdrop"); if(b) b.classList.add("hidden"); }
+async function applyBulk(includeAlreadyMarked){
+  const w=findWorker(calWorkerId); if(!w||!chosenBulkState) return;
+  const dates=[...selectedDates];
+  const toWrite=dates.filter(ds=>{
+    if(includeAlreadyMarked) return true;
+    const rec=att(w.id,ds); const marked = rec && ((rec.morning&&rec.morning!=="unmarked") || (rec.evening&&rec.evening!=="unmarked"));
+    return !marked;
+  });
+  closeConfirm();
+  try{
+    const batch=writeBatch(db);
+    toWrite.forEach(ds=>{
+      const rec=att(w.id,ds);
+      const value = chosenBulkState; // "halfday" is handled specially below — never stored as a literal value
+      let data;
+      if(chosenBulkState==="halfday"){ data = shiftType(w)==="double" ? {morning:"present",evening:"absent"} : {morning:"present"}; }
+      else { data = shiftType(w)==="double" ? {morning:value,evening:value} : {morning:value}; }
+      if(rec) batch.update(path("attendance",rec.id), {...data, updatedAt:serverTimestamp()});
+      else batch.set(doc(path("attendance")), {workerId:w.id, date:ds, morning:"unmarked", evening:"unmarked", ...data, createdAt:serverTimestamp(), updatedAt:serverTimestamp()});
+    });
+    await batch.commit();
+    clearSelection();
+    await load();
+    toast(`Updated ${toWrite.length} day${toWrite.length===1?"":"s"}`);
+  }catch(e){ error("Bulk update wasn't saved", e.message); }
 }
 
 /* =========================================================================
@@ -446,6 +544,7 @@ function closeAccountMenu(){const m=$("#accountMenu");if(m){m.classList.add("hid
    never toggle panel .hidden classes itself (this was Bug 2 previously). */
 function render(){renderToday();renderCalendar();window.renderPay?.();renderWorkers();syncAccountUI();if(state.household)renderHousehold()}
 window.__onViewChanged=(view)=>{
+  if(view!=="calendar" && selectedDates.size){ selectedDates.clear(); chosenBulkState=null; $("#bulkBar")?.classList.add("hidden"); }
   if(view==="calendar") renderCalendar();
   if(view==="pay" && window.renderPay) window.renderPay();
   if(view==="workers"){ $("#detailsPanel").classList.add("hidden"); renderWorkers(); }
@@ -470,11 +569,19 @@ document.addEventListener("click",e=>{
   const shiftToggleBtn=e.target.closest("#shiftToggle button");
   if(shiftToggleBtn){ openAttendance(sheetCtx.workerId, sheetCtx.date, shiftToggleBtn.dataset.shift); return; }
   const calWorkerBtn=e.target.closest("[data-cal-worker]");
-  if(calWorkerBtn){ calWorkerId=calWorkerBtn.dataset.calWorker; renderCalendar(); return; }
+  if(calWorkerBtn){ calWorkerId=calWorkerBtn.dataset.calWorker; clearSelection(); return; }
   const calNavBtn=e.target.closest("[data-cal-nav]");
-  if(calNavBtn){ calMonthIdx+=Number(calNavBtn.dataset.calNav); if(calMonthIdx<0){calMonthIdx=11;calYear--} if(calMonthIdx>11){calMonthIdx=0;calYear++} calSelectedDay=1; renderCalendar(); return; }
-  const calDayBtn=e.target.closest("[data-cal-day]");
-  if(calDayBtn){ calSelectedDay=Number(calDayBtn.dataset.calDay); renderCalendar(); return; }
+  if(calNavBtn){ calMonthIdx+=Number(calNavBtn.dataset.calNav); if(calMonthIdx<0){calMonthIdx=11;calYear--} if(calMonthIdx>11){calMonthIdx=0;calYear++} clearSelection(); return; }
+  const clearSelBtn=e.target.closest('[data-action="clear-selection"]');
+  if(clearSelBtn){ clearSelection(); return; }
+  const bulkStateBtn=e.target.closest("[data-bulk-state]");
+  if(bulkStateBtn){ chooseBulkState(bulkStateBtn.dataset.bulkState); return; }
+  const bulkApplyBtn=e.target.closest("#bulkApplyBtn");
+  if(bulkApplyBtn && chosenBulkState){ confirmBulkApply(); return; }
+  const closeConfirmBtn=e.target.closest('[data-action="close-confirm"]');
+  if(closeConfirmBtn){ closeConfirm(); return; }
+  const applyBulkBtn=e.target.closest('[data-action="apply-bulk"]');
+  if(applyBulkBtn){ applyBulk(applyBulkBtn.dataset.include==="true"); return; }
   const detailsBtn=e.target.closest("[data-open-details]");
   if(detailsBtn){ openDetails(detailsBtn.dataset.openDetails); return; }
   const closeDetailsBtn=e.target.closest('[data-action="close-details"]');
