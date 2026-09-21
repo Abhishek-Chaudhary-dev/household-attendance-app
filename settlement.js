@@ -36,6 +36,53 @@ async function loadData(){if(!user)return;try{householdId=householdId||await res
 function outstandingAdvancesFor(workerId, monthKey){
   return advances.filter(a=>a.workerId===workerId && a.recoveryMonth===monthKey && (a.amount-a.recoveredAmount)>0.001);
 }
+
+// Plain-English explanation of how a worker's pay was calculated this
+// month, shown only when the (i) button is tapped — the goal is to keep
+// the card itself simple while still making every number traceable on
+// request, per the standing "never hide the math, just don't force it on
+// the user" principle.
+function explainCalc(c, w){
+  const p=[];
+  if(c.paymentMethod==="monthly"){
+    p.push(`${esc(c.name)} is paid a fixed ${money(c.monthlySalary)} every month.`);
+    p.push(`We divide that by the number of days in ${monthLabel(selectedMonth)} (${c.days} days) to work out a daily amount: ${money(c.monthlySalary)} ÷ ${c.days} = ${money(c.monthlySalary/c.days)} per day.`);
+    p.push(`${esc(c.name)} gets ${w.monthlyPaidLeaves??2} paid day${(w.monthlyPaidLeaves??2)===1?"":"s"} off every month, free of charge. This month, ${esc(c.name)} took ${c.leaveDays} day${c.leaveDays===1?"":"s"} of leave.`);
+    if(c.unpaidLeaveDays>0){
+      p.push(`${c.paidLeaveDays} of those ${c.paidLeaveDays===1?"was":"were"} covered by the free days off. The other ${c.unpaidLeaveDays} ${c.unpaidLeaveDays===1?"was":"were"} extra, so we take that off the pay: ${c.unpaidLeaveDays} × ${money(c.monthlySalary/c.days)} = ${money(c.deduction)} less.`);
+      p.push(`${money(c.monthlySalary)} − ${money(c.deduction)} = ${money(c.basePayment-c.deduction)}. That's what ${esc(c.name)} has earned this month, before anything else.`);
+    } else {
+      p.push(`That's within the free days off, so nothing is taken away. ${esc(c.name)} gets the full ${money(c.monthlySalary)} this month.`);
+    }
+    if(c.absentDays>0){
+      p.push(`${esc(c.name)} was also marked Absent ${c.absentDays} time${c.absentDays===1?"":"s"} this month. In this app, only extra leave (beyond the free days off) reduces pay — being marked Absent on its own does not.`);
+    }
+  } else {
+    p.push(`${esc(c.name)} is paid ${money(c.dailyRate)} for each day worked.`);
+    p.push(`This month, ${esc(c.name)} was present ${c.presentDays} day${c.presentDays===1?"":"s"} and had ${c.paidLeaveDays} paid day${c.paidLeaveDays===1?"":"s"} off — so ${esc(c.name)} is owed for ${c.presentDays+c.paidLeaveDays} day${(c.presentDays+c.paidLeaveDays)===1?"":"s"} in total.`);
+    p.push(`${c.presentDays+c.paidLeaveDays} × ${money(c.dailyRate)} = ${money(c.basePayment)}.`);
+  }
+  if(c.advanceRecovery>0){
+    p.push(`${esc(c.name)} also has an advance we're recovering this month: ${money(c.basePayment-c.deduction)} − ${money(c.advanceRecovery)} = ${money(c.finalAmount)}. That's the final amount to pay.`);
+  } else {
+    p.push(`${money(c.basePayment-c.deduction)} is the final amount to pay this month.`);
+  }
+  return p.map(line=>`<p>${line}</p>`).join("");
+}
+function openCalcInfo(workerId){
+  const w=workers.find(x=>x.id===workerId); if(!w) return;
+  const c=calcWorkerFull(w, selectedMonth);
+  let modal=$("#calcInfoModal");
+  if(!modal){
+    modal=document.createElement("div"); modal.id="calcInfoModal"; modal.className="confirm-backdrop hidden";
+    modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="calcInfoTitle"></h3><div id="calcInfoBody" class="calc-info-body"></div><button class="btn-cancel" id="calcInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
+    document.getElementById("app")?.appendChild(modal) || document.body.appendChild(modal);
+    $("#calcInfoClose").onclick=()=>modal.classList.add("hidden");
+  }
+  $("#calcInfoTitle").textContent=`How ${w.name}'s pay is calculated`;
+  $("#calcInfoBody").innerHTML=explainCalc(c,w);
+  modal.classList.remove("hidden");
+}
 const currentMonthKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`};
 
 // Month-to-date payable — a genuinely separate figure from calculate()'s
@@ -208,15 +255,7 @@ function render(){
             <div class="mtd-net-row"><span>Hand over now</span><span id="mtdNet_${w.id}">${money(c.monthToDate)}</span></div>
           </div>`;
         })() : ""}
-        ${c.paymentMethod==="monthly" ? `
-          <div class="calc-line"><span>Monthly salary</span><span>${money(c.monthlySalary)}</span></div>
-          <div class="calc-line"><span>Daily allocation</span><span>${money(c.monthlySalary/c.days)}</span></div>
-          ${c.unpaidLeaveDays>0?`<div class="calc-line"><span>Unpaid leave deduction (${c.unpaidLeaveDays} day${c.unpaidLeaveDays===1?"":"s"})</span><span class="neg">− ${money(c.deduction)}</span></div>`:""}
-        ` : `
-          <div class="calc-line"><span>Daily rate</span><span>${money(c.dailyRate)}</span></div>
-          <div class="calc-line"><span>Payable days (present + paid leave)</span><span>${c.presentDays+c.paidLeaveDays}</span></div>
-        `}
-        <div class="calc-line total"><span>Calculated payable</span><span>${money(c.basePayment-c.deduction)}</span></div>
+        <div class="calc-line total"><span>Calculated payable <button class="calc-info-btn" data-calc-info="${w.id}" aria-label="How this was calculated">i</button></span><span>${money(c.basePayment-c.deduction)}</span></div>
         ${c.advanceRecovery>0?`<div class="calc-line advance-line"><span>Advance recovery</span><span>− ${money(c.advanceRecovery)}</span></div>`:""}
         ${outstandingAdvancesFor(w.id, selectedMonth).length
           ? `<div class="advance-banner"><span><strong>${money(outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0))}</strong> advance to recover</span><span style="display:flex;gap:8px"><button class="add-advance-link" data-advance-view="${w.id}">View (${advances.filter(a=>a.workerId===w.id).length})</button><button class="add-advance-link" data-advance-worker="${w.id}">+ Add Advance</button></span></div>`
@@ -234,6 +273,7 @@ function render(){
   $$("[data-advance-worker]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceWorker));
   $$("[data-advance-view]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceView));
   $$("[data-record-payment]").forEach(b=>b.onclick=()=>recordPayment(b.dataset.recordPayment));
+  $$("[data-calc-info]").forEach(b=>b.onclick=()=>openCalcInfo(b.dataset.calcInfo));
   $$("[id^='mtdDeduct_']").forEach(input=>input.oninput=()=>{
     const gross=Number(input.dataset.mtdGross||0), outstanding=Number(input.dataset.mtdOutstanding||0);
     let deduct=Number(input.value||0);
