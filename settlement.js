@@ -36,6 +36,41 @@ async function loadData(){if(!user)return;try{householdId=householdId||await res
 function outstandingAdvancesFor(workerId, monthKey){
   return advances.filter(a=>a.workerId===workerId && a.recoveryMonth===monthKey && (a.amount-a.recoveredAmount)>0.001);
 }
+const currentMonthKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`};
+
+// Month-to-date payable — a genuinely separate figure from calculate()'s
+// full-month settlement amount, added specifically so a worker asking for
+// salary mid-month can be answered instantly without waiting for month-end.
+// Deliberately NOT built by re-calling calculate() with end=today: that
+// function's daily-allocation divisor is the length of whatever range you
+// pass it, so a partial range would silently double the effective daily
+// rate. Daily-rate workers don't have this problem — their existing formula
+// is already naturally prorated by attendance — so they reuse calculate()
+// directly. Only monthly-salary workers need this separate calculation,
+// which reuses the same present/leave shift-counting approach, just scoped
+// to month-start -> today instead of the whole month, with the daily
+// allocation still based on the FULL month's length (consistent with the
+// rate already shown elsewhere on the card).
+// Returns the GROSS earned-so-far figure only — any advance deduction is a
+// live, user-typed input in the UI (see wireMtdInputs below), not decided
+// automatically here. This is a display-only figure; it commits nothing to
+// Firestore. The one place advance recovery actually gets recorded is still
+// the existing month-end "record payment" flow.
+function monthToDatePayable(w, monthKey){
+  if(monthKey!==currentMonthKey()) return null; // only meaningful for the month actually in progress
+  const today=iso(new Date());
+  if(w.payType==="monthly"){
+    const rows=attendance.filter(a=>a.workerId===w.id&&a.date>=monthStart(monthKey)&&a.date<=today),single=(w.shiftType??"double")==="single";
+    const presentShifts=rows.reduce((n,a)=>n+(a.morning==="present")+(single?0:a.evening==="present"),0);
+    const leaveShifts=rows.reduce((n,a)=>n+(a.morning==="leave")+(single?0:a.evening==="leave"),0);
+    const divisor=single?1:2, presentDays=presentShifts/divisor, leaveDays=leaveShifts/divisor;
+    const paidLeaveDays=Math.min(leaveDays, Number(w.monthlyPaidLeaves??2));
+    const fullMonthDays=Math.max(1,Math.floor((parseDate(monthEnd(monthKey))-parseDate(monthStart(monthKey)))/86400000)+1);
+    const dailyAllocation=Number(w.monthlySalary||0)/fullMonthDays;
+    return Math.max(0, dailyAllocation*(presentDays+paidLeaveDays));
+  }
+  return calculate(w, monthStart(monthKey), today).finalPayment;
+}
 function calcWorkerFull(w, monthKey){
   const base=calculate(w, monthStart(monthKey), monthEnd(monthKey));
   const outstanding=outstandingAdvancesFor(w.id, monthKey);
@@ -44,7 +79,8 @@ function calcWorkerFull(w, monthKey){
   const paymentRec=payments.find(p=>p.workerId===w.id && p.month===monthKey);
   const actualPaid = paymentRec ? Number(paymentRec.actualPaid||0) : null;
   let status="unpaid"; if(actualPaid!=null){ status = actualPaid<=0 ? "unpaid" : actualPaid>=finalAmount ? "paid" : "partial"; }
-  return {...base, outstanding, advanceRecovery, finalAmount, actualPaid, status, paymentRec};
+  const monthToDate=monthToDatePayable(w, monthKey);
+  return {...base, outstanding, advanceRecovery, finalAmount, actualPaid, status, paymentRec, monthToDate};
 }
 
 // Advance recovery is only ever committed to Firestore at the moment a
@@ -154,6 +190,24 @@ function render(){
           <div class="chip"><div class="n">${c.leaveDays}</div><div class="l">Leave</div></div>
           <div class="chip"><div class="n">${c.absentDays}</div><div class="l">Absent</div></div>
         </div>
+        ${c.monthToDate!=null ? (()=>{
+          const outstandingAmt=outstandingAdvancesFor(w.id,selectedMonth).reduce((s,a)=>s+(a.amount-a.recoveredAmount),0);
+          const dateLabel=parseDate(iso(new Date())).toLocaleDateString(undefined,{day:"numeric",month:"short"});
+          if(outstandingAmt<=0){
+            return `<div class="mtd-box"><div class="lbl">PAYABLE TILL TODAY (${dateLabel})</div><div class="amt">${money(c.monthToDate)}</div></div>`;
+          }
+          return `<div class="mtd-box">
+            <div class="lbl">EARNED TILL TODAY (${dateLabel})</div>
+            <div class="amt">${money(c.monthToDate)}</div>
+            <div class="mtd-advance-note">Outstanding advance: ${money(outstandingAmt)}</div>
+            <div class="mtd-deduct-row">
+              <label for="mtdDeduct_${w.id}">Deduct now (₹)</label>
+              <input type="number" min="0" max="${Math.round(Math.min(c.monthToDate,outstandingAmt))}" step="1" id="mtdDeduct_${w.id}" placeholder="0"
+                data-mtd-gross="${c.monthToDate}" data-mtd-outstanding="${outstandingAmt}">
+            </div>
+            <div class="mtd-net-row"><span>Hand over now</span><span id="mtdNet_${w.id}">${money(c.monthToDate)}</span></div>
+          </div>`;
+        })() : ""}
         ${c.paymentMethod==="monthly" ? `
           <div class="calc-line"><span>Monthly salary</span><span>${money(c.monthlySalary)}</span></div>
           <div class="calc-line"><span>Daily allocation</span><span>${money(c.monthlySalary/c.days)}</span></div>
@@ -180,6 +234,14 @@ function render(){
   $$("[data-advance-worker]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceWorker));
   $$("[data-advance-view]").forEach(b=>b.onclick=()=>openAdvanceModal(b.dataset.advanceView));
   $$("[data-record-payment]").forEach(b=>b.onclick=()=>recordPayment(b.dataset.recordPayment));
+  $$("[id^='mtdDeduct_']").forEach(input=>input.oninput=()=>{
+    const gross=Number(input.dataset.mtdGross||0), outstanding=Number(input.dataset.mtdOutstanding||0);
+    let deduct=Number(input.value||0);
+    if(deduct<0) deduct=0; if(deduct>outstanding) deduct=outstanding; if(deduct>gross) deduct=gross;
+    if(Number(input.value)!==deduct && input.value!=="") input.value=deduct;
+    const netEl=document.getElementById(input.id.replace("mtdDeduct_","mtdNet_"));
+    if(netEl) netEl.textContent=money(Math.max(0,gross-deduct));
+  });
 }
 window.renderPay=render; // exposed so app.js can trigger a re-render after actions like adding a worker
 
