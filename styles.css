@@ -207,6 +207,11 @@ main{padding:16px 16px 100px;position:relative;z-index:1}
 .attendance-summary .chip .n{font-family:'Quicksand',sans-serif;font-weight:700;font-size:15px}
 .attendance-summary .chip .l{font-size:9.5px;color:var(--muted);font-weight:600}
 .calc-line{display:flex;justify-content:space-between;font-size:13px;padding:6px 0}
+.calc-info-btn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;
+  background:var(--line);color:var(--muted);font-size:10px;font-weight:700;font-style:italic;font-family:Georgia,serif;margin-left:5px;vertical-align:middle}
+.calc-info-card{max-height:78vh;overflow-y:auto}
+.calc-info-body p{font-size:14px;line-height:1.55;color:var(--ink);margin:0 0 12px}
+.calc-info-body p:last-child{margin-bottom:0;font-weight:700}
 .calc-line.total{border-top:1px solid var(--line);margin-top:4px;padding-top:10px;font-weight:700;font-size:14.5px}
 .calc-line .neg{color:var(--red)}
 .calc-line.advance-line{color:var(--red)}
