@@ -1,9 +1,14 @@
 {
-  "name": "Household Attendance",
-  "short_name": "Attendance",
-  "start_url": ".",
+  "name": "Household Help",
+  "short_name": "Household Help",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "#FBF8F2",
-  "theme_color": "#1E9461",
-  "description": "Household worker attendance and payment tracker."
+  "background_color": "#F7F3EC",
+  "theme_color": "#F7F3EC",
+  "description": "Household worker attendance and payment tracker.",
+  "icons": [
+    { "src": "/icons/household-help-icon-48x48.png", "sizes": "48x48", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/household-help-icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/household-help-icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
 }
