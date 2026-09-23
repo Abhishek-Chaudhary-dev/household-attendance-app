@@ -95,7 +95,8 @@ main{padding:16px 16px 100px;position:relative;z-index:1}
   transition:transform .3s cubic-bezier(.2,.9,.3,1);box-shadow:var(--shadow-lg)}
 .sheet.open{transform:translate(-50%,0)}
 .sheet .grabber{width:36px;height:4px;background:var(--line);border-radius:3px;margin:6px auto 14px}
-.sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.sheet-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;position:relative;padding-right:38px}
+.sheet-header .close-btn{top:-6px;right:-6px}
 .sheet-header .avatar{width:44px;height:44px}
 .sheet-header .name{font-weight:700;font-size:15.5px}
 .sheet-header .sub{font-size:12px;color:var(--muted)}
