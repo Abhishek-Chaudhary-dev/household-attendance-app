@@ -280,6 +280,7 @@ main{padding:16px 16px 100px;position:relative;z-index:1}
 .detail-row span:last-child{font-weight:600}
 .detail-row input,.detail-row select{border:1.5px solid var(--line);background:var(--cream);border-radius:9px;padding:6px 9px;font-size:13px;font-weight:600;width:55%;text-align:right}
 .edit-toggle-btn{width:100%;background:var(--ink);color:#fff;padding:13px;border-radius:15px;font-weight:700;margin-top:14px}
+.danger-link{display:block;width:100%;text-align:center;color:var(--red);font-weight:600;font-size:13px;padding:12px 0 4px}
 .edit-toggle-btn.saving{background:var(--green)}
 .inactive-tag{font-size:10.5px;color:var(--muted);font-weight:600}
 

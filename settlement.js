@@ -111,12 +111,13 @@ function openMtdInfo(workerId){
     modal=document.createElement("div"); modal.id="calcInfoModal"; modal.className="confirm-backdrop hidden";
     modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="calcInfoTitle"></h3><div id="calcInfoBody" class="calc-info-body"></div><button class="primary-btn" id="calcInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
     document.getElementById("app")?.appendChild(modal) || document.body.appendChild(modal);
-    $("#calcInfoClose").onclick=()=>modal.classList.add("hidden");
-    modal.onclick=e=>{ if(e.target===modal) modal.classList.add("hidden"); };
+    $("#calcInfoClose").onclick=()=>window.requestCloseTopOverlay?.() ?? modal.classList.add("hidden");
+    modal.onclick=e=>{ if(e.target===modal) (window.requestCloseTopOverlay?.() ?? modal.classList.add("hidden")); };
   }
   $("#calcInfoTitle").textContent=`How ${w.name}'s pay till today is worked out`;
   $("#calcInfoBody").innerHTML=explainMtd(w,m,selectedMonth);
   modal.classList.remove("hidden");
+  window.pushOverlayState?.();
 }
 function calcWorkerFull(w, monthKey){
   const base=calculate(w, monthStart(monthKey), monthEnd(monthKey));
@@ -186,6 +187,7 @@ function openAdvanceModal(preselectId){
   $("#advNotes").value="";
   renderAdvanceHistory(preselectId||sel.value);
   modal.classList.remove("hidden");
+  window.pushOverlayState?.();
 }
 function renderAdvanceHistory(workerId){
   const list=$("#advHistoryList"); if(!list) return;
@@ -197,7 +199,7 @@ function renderAdvanceHistory(workerId){
       <span class="advance-status ${a.status}">${label[a.status]||a.status}</span>
     </div>`).join("") : `<p class="subtle" style="margin:0 0 8px">No advances recorded yet for this worker.</p>`;
 }
-function closeAdvanceModal(){ $("#advanceModal")?.classList.add("hidden"); }
+function closeAdvanceModal(){ window.requestCloseTopOverlay?.() ?? $("#advanceModal")?.classList.add("hidden"); }
 async function saveAdvance(){
   const workerId=$("#advWorker").value, amount=Number($("#advAmount").value||0);
   if(!amount||amount<=0) return;

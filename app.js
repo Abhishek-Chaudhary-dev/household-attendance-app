@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider();
@@ -13,7 +13,7 @@ const normEmail=e=>String(e||"").trim().toLowerCase();
 const path=(name,id)=>id?doc(db,"households",state.household.id,name,id):collection(db,"households",state.household.id,name);
 const owner=()=>state.household?.ownerUid===state.user?.uid;
 const shiftType=w=>w?.shiftType||"double"; // Existing workers without the field remain double-shift; new workers default to single.
-function error(t,m){$("#modalContent").innerHTML=`<h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">OK</button>`;$("#modal").classList.remove("hidden");$("#ok").onclick=()=>$("#modal").classList.add("hidden")}
+function error(t,m){$("#modalContent").innerHTML=`<h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">OK</button>`;$("#modal").classList.remove("hidden");pushOverlayState();$("#ok").onclick=()=>requestCloseTopOverlay()}
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
 
 /* =========================================================================
@@ -226,6 +226,7 @@ let sheetCtx={workerId:null,date:null,shift:null};
 function findWorker(id){ return state.workers.find(x=>x.id===id) }
 function openAttendance(workerId,date,forceShift){
   const w=findWorker(workerId); if(!w) return;
+  const wasOpen=$("#attendanceSheet")?.classList.contains("open");
   let shift=forceShift;
   if(!shift){
     if(shiftType(w)==="single") shift="morning";
@@ -241,9 +242,42 @@ function openAttendance(workerId,date,forceShift){
   $$(".shift-toggle button").forEach(b=>b.classList.toggle("active", b.dataset.shift===shift));
   highlightState(shiftValue(workerId,date,shift));
   $("#attendanceSheet").classList.add("open"); $("#sheetBackdrop").classList.add("open");
+  if(!wasOpen) pushOverlayState(); // only a genuinely new open — not the Morning/Evening toggle re-render, or the sheet would need two back-presses to close
 }
 function highlightState(v){ $$(".state-btn").forEach(b=>b.classList.toggle("selected", b.dataset.state===v)) }
-function closeSheet(){ $("#attendanceSheet").classList.remove("open"); $("#sheetBackdrop").classList.remove("open") }
+/* =========================================================================
+   HARDWARE/BROWSER BACK-BUTTON INTEGRATION
+   Without this, pressing the phone's back button while any modal, sheet,
+   or overlay is open closes the whole app instead of just that overlay —
+   a single-page app that never touches browser history has nothing for
+   "back" to go back to within the page, so the browser just leaves it.
+   Every overlay-open call pushes one history entry. EVERY way of closing
+   an overlay — the hardware back button, an on-screen Cancel/X/Close
+   button, or tapping outside it — goes through requestCloseTopOverlay(),
+   which either triggers history.back() (letting the popstate handler do
+   the actual closing) or, if nothing was pushed, closes directly. This
+   keeps there being exactly one place that decides what "closing" means,
+   rather than duplicating that logic in eight different button handlers
+   where it could drift out of sync.
+   ========================================================================= */
+let overlayDepth=0;
+let detailsOverlayActive=false; // tracks whether Worker Details currently owns a pushed history entry
+function pushOverlayState(){ history.pushState({overlay:true},""); overlayDepth++; }
+function closeTopOverlay(){
+  if($("#attendanceSheet")?.classList.contains("open")){ $("#attendanceSheet").classList.remove("open"); $("#sheetBackdrop")?.classList.remove("open"); return true; }
+  for(const id of ["removeWorkerModal","advanceModal","calcInfoModal","legendInfoModal","confirmBackdrop","modal"]){
+    const el=document.getElementById(id); if(el && !el.classList.contains("hidden")){ el.classList.add("hidden"); return true; }
+  }
+  const householdOv=document.getElementById("householdOverlay"); if(householdOv && !householdOv.classList.contains("hidden")){ householdOv.classList.add("hidden"); return true; }
+  const detailsPanel=document.getElementById("detailsPanel"); if(detailsPanel && !detailsPanel.classList.contains("hidden")){ detailsPanel.classList.add("hidden"); window.selectView?.("workers"); detailsOverlayActive=false; return true; }
+  return false;
+}
+function requestCloseTopOverlay(){ if(overlayDepth>0) history.back(); else closeTopOverlay(); }
+window.addEventListener("popstate",()=>{ if(overlayDepth>0) overlayDepth--; closeTopOverlay(); });
+window.pushOverlayState=pushOverlayState;
+window.requestCloseTopOverlay=requestCloseTopOverlay;
+
+function closeSheet(){ requestCloseTopOverlay(); }
 async function selectState(state_){
   const {workerId,date,shift}=sheetCtx, w=findWorker(workerId);
   if(!w) return;
@@ -377,8 +411,9 @@ function confirmBulkApply(){
     $("#confirmActions").innerHTML=`<button class="btn-cancel" data-action="close-confirm">Cancel</button><button class="btn-confirm" data-action="apply-bulk" data-include="true">Mark ${label}</button>`;
   }
   backdrop.classList.remove("hidden");
+  pushOverlayState();
 }
-function closeConfirm(){ const b=$("#confirmBackdrop"); if(b) b.classList.add("hidden"); }
+function closeConfirm(){ requestCloseTopOverlay(); }
 
 // Plain-English, one-line explanations for the Calendar legend's (i) buttons.
 const legendInfoText={
@@ -394,13 +429,14 @@ function openLegendInfo(key){
     modal=document.createElement("div"); modal.id="legendInfoModal"; modal.className="confirm-backdrop hidden";
     modal.innerHTML=`<div class="confirm-card calc-info-card"><h3 id="legendInfoTitle"></h3><div id="legendInfoBody" class="calc-info-body"></div><button class="primary-btn" id="legendInfoClose" style="width:100%;margin-top:14px">Close</button></div>`;
     document.getElementById("app")?.appendChild(modal) || document.body.appendChild(modal);
-    $("#legendInfoClose").onclick=()=>modal.classList.add("hidden");
-    modal.onclick=e=>{ if(e.target===modal) modal.classList.add("hidden"); };
+    $("#legendInfoClose").onclick=()=>requestCloseTopOverlay();
+    modal.onclick=e=>{ if(e.target===modal) requestCloseTopOverlay(); };
   }
   const titles={present:"Present",absent:"Absent",leave:"Leave",halfday:"Half Day",selected:"Selected"};
   $("#legendInfoTitle").textContent=titles[key]||key;
   $("#legendInfoBody").innerHTML=`<p>${legendInfoText[key]||""}</p>`;
   modal.classList.remove("hidden");
+  pushOverlayState();
 }
 async function applyBulk(includeAlreadyMarked){
   const w=findWorker(calWorkerId); if(!w||!chosenBulkState) return;
@@ -463,7 +499,8 @@ function addWorkerModal(){
     </form>
     <p class="link-btn">Leave allowance and other details can be added from Worker Details later.</p>`;
   $("#modal").classList.remove("hidden");
-  $("#cancel").onclick=()=>$("#modal").classList.add("hidden");
+  pushOverlayState();
+  $("#cancel").onclick=()=>requestCloseTopOverlay();
   let payType="daily", shiftType_="single";
   $$('#modalContent [data-shift]').forEach(b=>b.onclick=()=>{shiftType_=b.dataset.shift;$$('#modalContent [data-shift]').forEach(x=>x.classList.toggle("active",x===b))});
   $$('#modalContent [data-pay]').forEach(b=>b.onclick=()=>{payType=b.dataset.pay;$$('#modalContent [data-pay]').forEach(x=>x.classList.toggle("active",x===b));$("#rateLabel").innerHTML=(payType==="monthly"?"Monthly amount (₹)":"Daily rate (₹)")+`<input name="rate" type="number" min="0" step="1" required>`});
@@ -473,7 +510,7 @@ function addWorkerModal(){
     const data={name:String(f.get("name")).trim(),role:String(f.get("role")).trim(),shiftType:shiftType_,monthlyPaidLeaves:2,paymentPolicy:"deduct",active:true,
       payType, dailyRate: payType==="daily"?rate:0, monthlySalary: payType==="monthly"?rate:0, updatedAt:serverTimestamp()};
     if(!data.name) return;
-    try{ await addDoc(path("workers"),{...data,createdAt:serverTimestamp()}); $("#modal").classList.add("hidden"); await load(); toast("Worker added") }
+    try{ await addDoc(path("workers"),{...data,createdAt:serverTimestamp()}); requestCloseTopOverlay(); await load(); toast("Worker added") }
     catch(err){ error("Worker wasn't saved",err.message) }
   };
 }
@@ -486,8 +523,46 @@ function addWorkerModal(){
    appearance of real data for them.
    ========================================================================= */
 let detailWorkerId=null, detailTab="details", editing=false;
-function openDetails(id){ const w=findWorker(id); detailWorkerId=id; detailTab="details"; editing=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); const t=$("#screenTitle"); if(t&&w) t.textContent=w.name; }
-function closeDetails(){ $("#detailsPanel").classList.add("hidden"); window.selectView("workers"); }
+function openDetails(id){ const w=findWorker(id); detailWorkerId=id; detailTab="details"; editing=false; renderDetails(); window.selectView("workers"); $("#detailsPanel").classList.remove("hidden"); $("#workersPanel").classList.add("hidden"); const t=$("#screenTitle"); if(t&&w) t.textContent=w.name; pushOverlayState(); detailsOverlayActive=true; }
+function closeDetails(){ requestCloseTopOverlay(); }
+
+// Removing a worker requires two separate, explicit confirmations before
+// anything is deleted — this is a real, irreversible action, so a single
+// tap-through confirm dialog isn't enough. Only the worker's own record is
+// deleted; their attendance/advance/payment history stays in Firestore
+// untouched (per the standing "never delete or reset existing production
+// data" principle) — they simply stop appearing anywhere in the app.
+function openRemoveWorkerStep1(workerId){
+  const w=findWorker(workerId); if(!w) return;
+  let modal=$("#removeWorkerModal");
+  if(!modal){
+    modal=document.createElement("div"); modal.id="removeWorkerModal"; modal.className="confirm-backdrop hidden";
+    modal.innerHTML=`<div class="confirm-card"><h3 id="removeWorkerTitle"></h3><p id="removeWorkerBody"></p><div class="confirm-actions" id="removeWorkerActions"></div></div>`;
+    document.getElementById("app").appendChild(modal);
+    modal.onclick=e=>{ if(e.target===modal) requestCloseTopOverlay(); };
+  }
+  $("#removeWorkerTitle").textContent=`Remove ${w.name}?`;
+  $("#removeWorkerBody").textContent=`This deletes ${w.name} from your household. Her past attendance, pay, and advance records stay in the system, but she won't appear anywhere in the app anymore. This can't be undone.`;
+  $("#removeWorkerActions").innerHTML=`<button class="btn-cancel" data-action="cancel-remove-worker">Cancel</button><button class="btn-danger" data-action="remove-worker-step2" data-worker-id="${w.id}">Remove</button>`;
+  modal.classList.remove("hidden");
+  pushOverlayState();
+}
+function openRemoveWorkerStep2(workerId){
+  const w=findWorker(workerId); if(!w) return;
+  $("#removeWorkerTitle").textContent=`Are you sure?`;
+  $("#removeWorkerBody").textContent=`Tap "Yes, remove ${w.name}" to confirm. There's no undo for this.`;
+  $("#removeWorkerActions").innerHTML=`<button class="btn-cancel" data-action="cancel-remove-worker">Cancel</button><button class="btn-danger" data-action="remove-worker-confirmed" data-worker-id="${w.id}">Yes, remove ${esc(w.name)}</button>`;
+}
+async function removeWorkerConfirmed(workerId){
+  const w=findWorker(workerId); if(!w) return;
+  try{
+    await deleteDoc(path("workers",workerId));
+    requestCloseTopOverlay(); // closes the remove-worker modal
+    await load();
+    closeDetails(); // then closes Worker Details, back to the roster
+    toast(`${w.name} removed`);
+  }catch(e){ error(`${w.name} wasn't removed`,e.message); }
+}
 function setDetailTab(tab){ detailTab=tab; editing=false; renderDetails(); }
 function renderDetails(){
   const w=findWorker(detailWorkerId); if(!w){ closeDetails(); return; }
@@ -516,14 +591,14 @@ function renderDetails(){
         <div class="detail-row"><span>Status</span>
           <div class="toggle-row" style="width:60%"><button type="button" class="${w.active!==false?"active":""}" data-status-choice="true">Active</button><button type="button" class="${w.active===false?"active":""}" data-status-choice="false">Inactive</button></div>
         </div>
-      </form>${editBtn}`;
+      </form>${editBtn}<button class="danger-link" data-action="remove-worker" data-worker-id="${w.id}">Remove worker</button>`;
     } else {
       html+=`<div class="detail-surface">
         <div class="detail-row"><span>Comes in</span><span>${shiftType(w)==="double"?"Morning & evening":"One visit a day"}</span></div>
         <div class="detail-row"><span>Paid leave/month</span><span>${w.monthlyPaidLeaves??2} days</span></div>
         <div class="detail-row"><span>Pay</span><span>${payLine(w)}</span></div>
         <div class="detail-row"><span>If leave exceeds allowance</span><span>${w.paymentPolicy==="full"?"Still paid in full":"Deducted"}</span></div>
-      </div>${editBtn}`;
+      </div>${editBtn}<button class="danger-link" data-action="remove-worker" data-worker-id="${w.id}">Remove worker</button>`;
     }
   } else if(detailTab==="history"){
     const today=new Date(), rows=[];
@@ -567,7 +642,15 @@ function closeAccountMenu(){const m=$("#accountMenu");if(m){m.classList.add("hid
 /* Panel visibility for the 4 tabs is owned by navigation.js; render() must
    never toggle panel .hidden classes itself (this was Bug 2 previously). */
 function render(){renderToday();renderCalendar();window.renderPay?.();renderWorkers();syncAccountUI();if(state.household)renderHousehold()}
+// If Worker Details was open and the user switches tabs via the bottom
+// nav (bypassing its own Back button / the history-driven close), the
+// pushed history entry for it would otherwise go stale — never popped,
+// so a later hardware-back press would silently consume one "dead" press
+// before back starts doing anything visible. Reconcile the counter here
+// without triggering a real navigation.
+function discardStaleOverlayState(){ if(overlayDepth>0) overlayDepth--; }
 window.__onViewChanged=(view)=>{
+  if(detailsOverlayActive){ discardStaleOverlayState(); detailsOverlayActive=false; }
   if(view!=="calendar" && selectedDates.size){ selectedDates.clear(); chosenBulkState=null; $("#bulkBar")?.classList.add("hidden"); }
   if(view==="calendar") renderCalendar();
   if(view==="pay" && window.renderPay) window.renderPay();
@@ -577,14 +660,22 @@ window.__onViewChanged=(view)=>{
 /* =========================================================================
    EVENT WIRING
    ========================================================================= */
-$("#googleSignInBtn").onclick=async()=>{try{await signInWithPopup(auth,provider)}catch(e){error("Google sign-in failed",e.message)}};
+$("#googleSignInBtn").onclick=async()=>{try{await signInWithRedirect(auth,provider)}catch(e){error("Google sign-in failed",e.message)}};
+// signInWithRedirect (not signInWithPopup) — popups are unreliable on iOS
+// Safari, especially when this app is running as an installed home-screen
+// PWA, where a real popup window often can't open at all. Redirect
+// navigates the whole page to Google and back, which works the same way
+// everywhere. This surfaces any error from that redirect once the page
+// reloads; onAuthStateChanged (already wired below) handles the actual
+// successful sign-in the same way it always did.
+getRedirectResult(auth).catch(e=>{ if(e?.code && e.code!=="auth/no-auth-event") error("Sign-in didn't complete",e.message||"Please try again."); });
 $("#refreshBtn").onclick=()=>{closeAccountMenu();load()};
-$("#closeModal").onclick=()=>$("#modal").classList.add("hidden");
-$("#modal").onclick=e=>{ if(e.target.id==="modal") $("#modal").classList.add("hidden"); };
+$("#closeModal").onclick=()=>requestCloseTopOverlay();
+$("#modal").onclick=e=>{ if(e.target.id==="modal") requestCloseTopOverlay(); };
 $("#accountBtn").onclick=e=>{e.stopPropagation();const m=$("#accountMenu"),willOpen=m.classList.contains("hidden");m.classList.toggle("hidden");$("#accountBtn").setAttribute("aria-expanded",String(willOpen))};
 document.addEventListener("click",()=>closeAccountMenu());
-$("#householdBtn").onclick=()=>{closeAccountMenu();renderHousehold();$("#householdOverlay").classList.remove("hidden")};
-$("#closeHousehold").onclick=()=>$("#householdOverlay").classList.add("hidden");
+$("#householdBtn").onclick=()=>{closeAccountMenu();renderHousehold();$("#householdOverlay").classList.remove("hidden");pushOverlayState()};
+$("#closeHousehold").onclick=()=>requestCloseTopOverlay();
 
 document.addEventListener("click",e=>{
   const sheetBtn=e.target.closest("[data-open-sheet]");
@@ -605,6 +696,14 @@ document.addEventListener("click",e=>{
   if(bulkApplyBtn && chosenBulkState){ confirmBulkApply(); return; }
   const closeConfirmBtn=e.target.closest('[data-action="close-confirm"]');
   if(closeConfirmBtn){ closeConfirm(); return; }
+  const removeWorkerBtn=e.target.closest('[data-action="remove-worker"]');
+  if(removeWorkerBtn){ openRemoveWorkerStep1(removeWorkerBtn.dataset.workerId); return; }
+  const cancelRemoveBtn=e.target.closest('[data-action="cancel-remove-worker"]');
+  if(cancelRemoveBtn){ requestCloseTopOverlay(); return; }
+  const removeStep2Btn=e.target.closest('[data-action="remove-worker-step2"]');
+  if(removeStep2Btn){ openRemoveWorkerStep2(removeStep2Btn.dataset.workerId); return; }
+  const removeConfirmedBtn=e.target.closest('[data-action="remove-worker-confirmed"]');
+  if(removeConfirmedBtn){ removeWorkerConfirmed(removeConfirmedBtn.dataset.workerId); return; }
   const legendInfoBtn=e.target.closest("[data-legend-info]");
   if(legendInfoBtn){ openLegendInfo(legendInfoBtn.dataset.legendInfo); return; }
   const applyBulkBtn=e.target.closest('[data-action="apply-bulk"]');
