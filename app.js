@@ -719,6 +719,7 @@ document.addEventListener("click",e=>{
   const addBtn=e.target.closest('[data-action="add"]');
   if(addBtn){ addWorkerModal(); return; }
   if(e.target.closest("#sheetBackdrop")){ closeSheet(); return; }
+  if(e.target.closest("#closeSheetBtn")){ closeSheet(); return; }
 });
 document.addEventListener("click",e=>{if(e.target.id==="logoutBtn"){closeAccountMenu();signOut(auth).catch(err=>error("Sign out failed",err.message))}});
 onAuthStateChanged(auth,async u=>{state.user=u;syncAccountUI();if(!u){$("#loginView").classList.remove("hidden");$("#loadingView").classList.add("hidden");$("#mainView").classList.add("hidden")}else{$("#loginView").classList.add("hidden");await load()}});
