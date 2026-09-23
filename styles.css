@@ -1,4 +1,5 @@
 :root{
+  color-scheme:light; /* stops Android/Samsung's "force dark for websites" from auto-inverting this page — it was never a dark theme we added */
   --cream:#FBF8F2; --surface:#FFFFFF; --line:rgba(36,31,26,.08);
   --ink:#241F1A; --muted:#847C6E;
   --green:#1E9461; --green-deep:#0F6E45; --green-tint:#DFF4E9;
