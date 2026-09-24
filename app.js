@@ -1,9 +1,19 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider();
+const app=initializeApp(firebaseConfig),auth=getAuth(app),provider=new GoogleAuthProvider();
+// Offline persistence: writes made while the connection drops get queued
+// locally (IndexedDB) and sync automatically once it's back, instead of
+// failing outright — this is the actual fallback mechanism for the common
+// case (a brief network blip), not something that needs a popup at all.
+// Falls back to a plain, non-persistent Firestore instance if this setup
+// fails for any reason (e.g. an unsupported browser) — a working app
+// without offline caching, rather than the app failing to start.
+let db;
+try{ db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
+catch(e){ db=getFirestore(app); }
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const state={user:null,household:null,workers:[],attendance:[],reports:[]};
 const iso=d=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`};
@@ -13,7 +23,8 @@ const normEmail=e=>String(e||"").trim().toLowerCase();
 const path=(name,id)=>id?doc(db,"households",state.household.id,name,id):collection(db,"households",state.household.id,name);
 const owner=()=>state.household?.ownerUid===state.user?.uid;
 const shiftType=w=>w?.shiftType||"double"; // Existing workers without the field remain double-shift; new workers default to single.
-function error(t,m){$("#modalContent").innerHTML=`<h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">OK</button>`;$("#modal").classList.remove("hidden");pushOverlayState();$("#ok").onclick=()=>requestCloseTopOverlay()}
+function error(t,m){$("#modalContent").innerHTML=`<button class="close-btn" id="errorCloseX" aria-label="Close">×</button><div class="error-icon">!</div><h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">Close</button>`;$("#modal").classList.remove("hidden");pushOverlayState();$("#ok").onclick=()=>requestCloseTopOverlay();$("#errorCloseX").onclick=()=>requestCloseTopOverlay()}
+window.error=error; // shared with settlement.js so both files show the same well-designed error popup, not a duplicated implementation
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
 
 /* =========================================================================
@@ -577,6 +588,7 @@ function renderDetails(){
     const editBtn=`<button class="edit-toggle-btn ${editing?"saving":""}" data-action="toggle-edit">${editing?"Save":"Edit details"}</button>`;
     if(editing){
       html+=`<form id="detailsForm" class="detail-surface">
+        <div class="detail-row"><span>Name</span><input name="workerName" type="text" value="${esc(w.name)}" required></div>
         <div class="detail-row"><span>Comes in</span>
           <div class="toggle-row" style="width:60%"><button type="button" class="${shiftType(w)==="single"?"active":""}" data-shift-choice="single">Once</button><button type="button" class="${shiftType(w)==="double"?"active":""}" data-shift-choice="double">Twice</button></div>
         </div>
@@ -624,7 +636,8 @@ function renderDetails(){
     $$('[data-status-choice]').forEach(b=>b.onclick=()=>{pendingActive=b.dataset.statusChoice==="true";$$('[data-status-choice]').forEach(x=>x.classList.toggle("active",x===b))});
     $('[data-action="toggle-edit"]').onclick=async ()=>{
       const form=$("#detailsForm"), fd=new FormData(form), rate=Number(fd.get("rate")||0), leave=Number(fd.get("leave")||0);
-      const data={shiftType:pendingShift, monthlyPaidLeaves:leave, payType:pendingPay, dailyRate:pendingPay==="daily"?rate:w.dailyRate, monthlySalary:pendingPay==="monthly"?rate:w.monthlySalary, paymentPolicy:pendingPolicy, active:pendingActive, updatedAt:serverTimestamp()};
+      const newName=String(fd.get("workerName")||"").trim();
+      const data={name:newName||w.name, shiftType:pendingShift, monthlyPaidLeaves:leave, payType:pendingPay, dailyRate:pendingPay==="daily"?rate:w.dailyRate, monthlySalary:pendingPay==="monthly"?rate:w.monthlySalary, paymentPolicy:pendingPolicy, active:pendingActive, updatedAt:serverTimestamp()};
       try{ await updateDoc(path("workers",w.id),data); await load(); openDetails(w.id); toast("Worker updated") }
       catch(err){ error("Worker wasn't saved",err.message) }
     };
