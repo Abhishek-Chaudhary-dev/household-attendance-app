@@ -1,19 +1,30 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, collection, addDoc, updateDoc, deleteDoc, query, where, orderBy, getDocs, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const firebaseConfig={apiKey:"AIzaSyBh7-h4GxX_cYZphqIvIYVVzMjQVFLKQyE",authDomain:"chatgpt-household-attendance.firebaseapp.com",projectId:"chatgpt-household-attendance",storageBucket:"chatgpt-household-attendance.firebasestorage.app",messagingSenderId:"640078047318",appId:"1:640078047318:web:fa508fb29be6621378f3f7"};
-const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app),provider=new GoogleAuthProvider();
+const app=initializeApp(firebaseConfig),auth=getAuth(app),provider=new GoogleAuthProvider();
+// Offline persistence: writes made while the connection drops get queued
+// locally (IndexedDB) and sync automatically once it's back, instead of
+// failing outright — this is the actual fallback mechanism for the common
+// case (a brief network blip), not something that needs a popup at all.
+// Falls back to a plain, non-persistent Firestore instance if this setup
+// fails for any reason (e.g. an unsupported browser) — a working app
+// without offline caching, rather than the app failing to start.
+let db;
+try{ db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})}); }
+catch(e){ db=getFirestore(app); }
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const state={user:null,household:null,workers:[],attendance:[],reports:[]};
+const state={user:null,household:null,workers:[],attendance:[]};
 const iso=d=>{const x=new Date(d);return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`};
 const parseDate=s=>{const [y,m,d]=String(s).split("-").map(Number);return new Date(y,m-1,d)};
 const esc=s=>String(s??"").replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const normEmail=e=>String(e||"").trim().toLowerCase();
 const path=(name,id)=>id?doc(db,"households",state.household.id,name,id):collection(db,"households",state.household.id,name);
 const owner=()=>state.household?.ownerUid===state.user?.uid;
-const shiftType=w=>w?.shiftType||"double"; // Existing workers without the field remain double-shift; new workers default to single.
-function error(t,m){$("#modalContent").innerHTML=`<h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">OK</button>`;$("#modal").classList.remove("hidden");pushOverlayState();$("#ok").onclick=()=>requestCloseTopOverlay()}
+const shiftType=w=>w?.shiftType??"double"; // Existing workers without the field remain double-shift; new workers default to single.
+function error(t,m){$("#modalContent").innerHTML=`<button class="close-btn" id="errorCloseX" aria-label="Close">×</button><div class="error-icon">!</div><h2 class="error-title">${esc(t)}</h2><p>${esc(m)}</p><button class="primary-btn" id="ok">Close</button>`;$("#modal").classList.remove("hidden");pushOverlayState();$("#ok").onclick=()=>requestCloseTopOverlay();$("#errorCloseX").onclick=()=>requestCloseTopOverlay()}
+window.error=error; // shared with settlement.js so both files show the same well-designed error popup, not a duplicated implementation
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2400)}
 
 /* =========================================================================
@@ -33,19 +44,15 @@ async function ensureHousehold(){
 function normalizeHousehold(s){const d=s.data();return{id:s.id,...d,members:Array.isArray(d.members)?d.members:[],memberEmails:Array.isArray(d.memberEmails)?d.memberEmails.map(normEmail).filter(Boolean):[normEmail(d.ownerEmail)].filter(Boolean)}}
 
 /* =========================================================================
-   LOAD — unchanged. Still fetches + auto-generates reports in the background
-   for data continuity, even though there is no dedicated Reports screen in
-   this design; nothing about the calculation/report engine changes here.
+   LOAD
    ========================================================================= */
 async function load(){
   $("#loadingView").classList.remove("hidden");$("#mainView").classList.add("hidden");
   try{
     state.household=await ensureHousehold();
-    const [w,a,r]=await Promise.all([getDocs(query(path("workers"),orderBy("name"))),getDocs(query(path("attendance"),orderBy("date","desc"))),getDocs(query(path("reports"),orderBy("periodStart","desc"))) ]);
+    const [w,a]=await Promise.all([getDocs(query(path("workers"),orderBy("name"))),getDocs(query(path("attendance"),orderBy("date","desc")))]);
     state.workers=w.docs.map(d=>({id:d.id,...d.data(),shiftType:d.data().shiftType??"double",monthlyPaidLeaves:Number(d.data().monthlyPaidLeaves??2),dailyRate:Number(d.data().dailyRate??0),monthlySalary:Number(d.data().monthlySalary??0)}));
-    state.attendance=a.docs.map(d=>({id:d.id,...d.data()}));state.reports=r.docs.map(d=>({id:d.id,...d.data()}));
-    await createDueReports();
-    if(state.reports.length!==r.size){const rr=await getDocs(query(path("reports"),orderBy("periodStart","desc")));state.reports=rr.docs.map(d=>({id:d.id,...d.data()}))}
+    state.attendance=a.docs.map(d=>({id:d.id,...d.data()}));
     render();$("#loadingView").classList.add("hidden");$("#mainView").classList.remove("hidden");
   }catch(e){$("#loadingView").classList.add("hidden");error("Couldn't load data",e.message||"Please check your connection.")}
 }
@@ -72,25 +79,33 @@ function derivedStatus(w,date){
 }
 
 /* =========================================================================
-   CALCULATION ENGINE — workerStats()/workerRows()/monthRows()/calc()/period()/
-   writeReport()/createDueReports() are byte-for-byte the same formulas as
-   the previous production version. Do not extend this — Pay is a
-   presentation layer on top of it, per the explicit product requirement.
+   CALCULATION ENGINE — the actual settlement math lives in calcFromRows()
+   below, shared with settlement.js via window.calcFromRows so there is
+   exactly one formula, not two that can silently drift apart.
    ========================================================================= */
 function workerRows(w,start,end){return state.attendance.filter(a=>a.workerId===w.id&&a.date>=start&&a.date<=end)}
-function workerStats(w,start,end){
-  const rows=workerRows(w,start,end),single=shiftType(w)==="single";
+// SINGLE canonical salary/attendance formula — this used to exist as two
+// separate, meant-to-be-identical copies (workerStats() here and
+// calculate() in settlement.js). Tracing them side by side to consolidate
+// found a real, live discrepancy: this file defaulted a missing
+// monthlyPaidLeaves to 0, settlement.js defaulted it to 2 — meaning any
+// worker missing that field would have shown a DIFFERENT payable amount
+// on Today/Worker Details than on Pay, silently, with nothing to flag it.
+// Standardized on 2 (matching the onboarding default every worker actually
+// gets, and what's shown everywhere as the assumed allowance).
+// Exposed via window so settlement.js calls this exact function rather
+// than keeping its own copy — one formula, not two that can drift again.
+function calcFromRows(w,rows,start,end){
+  const single=shiftType(w)==="single";
   const present=rows.reduce((n,a)=>n+(a.morning==="present")+(single?0:a.evening==="present"),0),leave=rows.reduce((n,a)=>n+(a.morning==="leave")+(single?0:a.evening==="leave"),0),absent=rows.reduce((n,a)=>n+(a.morning==="absent")+(single?0:a.evening==="absent"),0);
-  const divisor=single?1:2,presentDays=present/divisor,leaveDays=leave/divisor,absentDays=absent/divisor,paidLeaveDays=Math.min(leaveDays,Number(w.monthlyPaidLeaves||0)),unpaidLeaveDays=Math.max(0,leaveDays-paidLeaveDays),days=Math.floor((parseDate(end)-parseDate(start))/86400000)+1;
+  const divisor=single?1:2,presentDays=present/divisor,leaveDays=leave/divisor,absentDays=absent/divisor,paidLeaveDays=Math.min(leaveDays,Number(w.monthlyPaidLeaves??2)),unpaidLeaveDays=Math.max(0,leaveDays-paidLeaveDays),days=Math.max(1,Math.floor((parseDate(end)-parseDate(start))/86400000)+1);
   const dailyRate=Number(w.dailyRate||0),monthlySalary=Number(w.monthlySalary||0),paymentMethod=w.payType==="monthly"?"monthly":"daily";let basePayment,deduction,finalPayment;
-  if(paymentMethod==="monthly"){basePayment=monthlySalary;deduction=w.paymentPolicy==="full"?0:unpaidLeaveDays*(monthlySalary/Math.max(1,days));finalPayment=Math.max(0,basePayment-deduction)}else{basePayment=(presentDays+paidLeaveDays)*dailyRate;deduction=0;finalPayment=Math.max(0,basePayment)}
+  if(paymentMethod==="monthly"){basePayment=monthlySalary;deduction=w.paymentPolicy==="full"?0:unpaidLeaveDays*(monthlySalary/days);finalPayment=Math.max(0,basePayment-deduction)}else{basePayment=(presentDays+paidLeaveDays)*dailyRate;deduction=0;finalPayment=Math.max(0,basePayment)}
   return{workerId:w.id,name:w.name,shiftType:shiftType(w),presentShifts:present,leaveShifts:leave,absentShifts:absent,presentDays,leaveDays,absentDays,paidLeaveDays,unpaidLeaveDays,days,dailyRate,monthlySalary,paymentMethod,basePayment,deduction,finalPayment};
 }
+window.calcFromRows=calcFromRows;
+function workerStats(w,start,end){ return calcFromRows(w,workerRows(w,start,end),start,end); }
 function monthRows(w,y,m){const days=new Date(y,m+1,0).getDate(),single=shiftType(w)==="single";return Array.from({length:days},(_,i)=>{const date=iso(new Date(y,m,i+1)),a=att(w.id,date),morning=a?.morning||"unmarked",evening=single?"unmarked":(a?.evening||"unmarked");return{date,morning,evening}})}
-function period(kind,anchor=new Date()){const d=new Date(anchor);if(kind==="week"){const s=new Date(d);s.setDate(d.getDate()-d.getDay());const e=new Date(s);e.setDate(s.getDate()+6);return{start:iso(s),end:iso(e),label:`Week ${iso(s)} → ${iso(e)}`}}const s=new Date(d.getFullYear(),d.getMonth(),1),e=new Date(d.getFullYear(),d.getMonth()+1,0);return{start:iso(s),end:iso(e),label:s.toLocaleDateString(undefined,{month:"long",year:"numeric"})}}
-function calc(start,end,workers=state.workers){return workers.filter(w=>w.active!==false).map(w=>workerStats(w,start,end))}
-async function writeReport(kind,p){await setDoc(path("reports",`${kind}_${p.start}`),{kind,periodStart:p.start,periodEnd:p.end,label:p.label,summary:calc(p.start,p.end),generatedAt:serverTimestamp(),autoGenerated:true},{merge:true})}
-async function createDueReports(){const now=new Date(),previousDay=new Date(now);previousDay.setDate(now.getDate()-1);const completedWeek=previousDay.getDay()===6?period("week",previousDay):null,previousMonth=new Date(now.getFullYear(),now.getMonth()-1,1),monthEnd=new Date(now.getFullYear(),now.getMonth(),0),monthClosed=iso(monthEnd)<iso(now),existing=new Set(state.reports.map(r=>`${r.kind}_${r.periodStart}`));if(completedWeek&&!existing.has(`week_${completedWeek.start}`))await writeReport("week",completedWeek);if(monthClosed){const p=period("month",previousMonth);if(!existing.has(`month_${p.start}`))await writeReport("month",p)}}
 
 /* =========================================================================
    HOUSEHOLD MEMBERS — unchanged logic, now rendered into the account-menu
@@ -577,6 +592,7 @@ function renderDetails(){
     const editBtn=`<button class="edit-toggle-btn ${editing?"saving":""}" data-action="toggle-edit">${editing?"Save":"Edit details"}</button>`;
     if(editing){
       html+=`<form id="detailsForm" class="detail-surface">
+        <div class="detail-row"><span>Name</span><input name="workerName" type="text" value="${esc(w.name)}" required></div>
         <div class="detail-row"><span>Comes in</span>
           <div class="toggle-row" style="width:60%"><button type="button" class="${shiftType(w)==="single"?"active":""}" data-shift-choice="single">Once</button><button type="button" class="${shiftType(w)==="double"?"active":""}" data-shift-choice="double">Twice</button></div>
         </div>
@@ -624,7 +640,8 @@ function renderDetails(){
     $$('[data-status-choice]').forEach(b=>b.onclick=()=>{pendingActive=b.dataset.statusChoice==="true";$$('[data-status-choice]').forEach(x=>x.classList.toggle("active",x===b))});
     $('[data-action="toggle-edit"]').onclick=async ()=>{
       const form=$("#detailsForm"), fd=new FormData(form), rate=Number(fd.get("rate")||0), leave=Number(fd.get("leave")||0);
-      const data={shiftType:pendingShift, monthlyPaidLeaves:leave, payType:pendingPay, dailyRate:pendingPay==="daily"?rate:w.dailyRate, monthlySalary:pendingPay==="monthly"?rate:w.monthlySalary, paymentPolicy:pendingPolicy, active:pendingActive, updatedAt:serverTimestamp()};
+      const newName=String(fd.get("workerName")||"").trim();
+      const data={name:newName||w.name, shiftType:pendingShift, monthlyPaidLeaves:leave, payType:pendingPay, dailyRate:pendingPay==="daily"?rate:w.dailyRate, monthlySalary:pendingPay==="monthly"?rate:w.monthlySalary, paymentPolicy:pendingPolicy, active:pendingActive, updatedAt:serverTimestamp()};
       try{ await updateDoc(path("workers",w.id),data); await load(); openDetails(w.id); toast("Worker updated") }
       catch(err){ error("Worker wasn't saved",err.message) }
     };
