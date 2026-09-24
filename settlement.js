@@ -23,7 +23,16 @@ const paymentsPath=id=>doc(db,"households",householdId,"payments",id);
 // explicit decision on file, Absent stays pay-neutral for monthly workers
 // (only Leave beyond the paid allowance deducts) — this is today's actual
 // behavior, not something this pass silently changed.
-function calculate(w,start,end){const rows=attendance.filter(a=>a.workerId===w.id&&a.date>=start&&a.date<=end),single=(w.shiftType??"double")==="single";const presentShifts=rows.reduce((n,a)=>n+(a.morning==="present")+(single?0:a.evening==="present"),0),leaveShifts=rows.reduce((n,a)=>n+(a.morning==="leave")+(single?0:a.evening==="leave"),0),absentShifts=rows.reduce((n,a)=>n+(a.morning==="absent")+(single?0:a.evening==="absent"),0),divisor=single?1:2,presentDays=presentShifts/divisor,leaveDays=leaveShifts/divisor,absentDays=absentShifts/divisor,paidLeaveDays=Math.min(leaveDays,Number(w.monthlyPaidLeaves??2)),unpaidLeaveDays=Math.max(0,leaveDays-paidLeaveDays),days=Math.max(1,Math.floor((parseDate(end)-parseDate(start))/86400000)+1),dailyRate=Number(w.dailyRate||0),monthlySalary=Number(w.monthlySalary||0),paymentMethod=w.payType==="monthly"?"monthly":"daily";let basePayment,deduction,finalPayment;if(paymentMethod==="monthly"){basePayment=monthlySalary;deduction=w.paymentPolicy==="full"?0:unpaidLeaveDays*(monthlySalary/days);finalPayment=Math.max(0,basePayment-deduction)}else{basePayment=(presentDays+paidLeaveDays)*dailyRate;deduction=0;finalPayment=Math.max(0,basePayment)}return{workerId:w.id,name:w.name,shiftType:single?"single":"double",paymentMethod,presentShifts,leaveShifts,absentShifts,presentDays,leaveDays,absentDays,paidLeaveDays,unpaidLeaveDays,days,dailyRate,monthlySalary,basePayment,deduction,finalPayment}}
+// Delegates to the SAME canonical formula app.js uses (window.calcFromRows)
+// — this file used to keep its own separate copy of this formula, which a
+// side-by-side trace found had actually drifted from app.js's version
+// (different default for a missing monthlyPaidLeaves: 0 here, 2 there).
+// Only this file's own attendance-fetching stays separate; the actual
+// math now lives in exactly one place.
+function calculate(w,start,end){
+  const rows=attendance.filter(a=>a.workerId===w.id&&a.date>=start&&a.date<=end);
+  return window.calcFromRows(w,rows,start,end);
+}
 
 // Own independent Firestore load (pre-existing pattern for this file) —
 // now also pulling the two new collections.
