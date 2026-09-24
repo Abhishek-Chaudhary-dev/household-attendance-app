@@ -27,7 +27,7 @@ function calculate(w,start,end){const rows=attendance.filter(a=>a.workerId===w.i
 
 // Own independent Firestore load (pre-existing pattern for this file) —
 // now also pulling the two new collections.
-async function loadData(){if(!user)return;try{householdId=householdId||await resolveHouseholdId();if(!householdId)throw new Error("No household access found for this Google account.");const [w,a,adv,pay]=await Promise.all([getDocs(query(collection(db,"households",householdId,"workers"),orderBy("name"))),getDocs(query(collection(db,"households",householdId,"attendance"),orderBy("date","desc"))),getDocs(query(collection(db,"households",householdId,"advances"),orderBy("advanceDate","desc"))),getDocs(collection(db,"households",householdId,"payments"))]);workers=w.docs.map(d=>({id:d.id,...d.data(),shiftType:d.data().shiftType??"double",monthlyPaidLeaves:Number(d.data().monthlyPaidLeaves??2),dailyRate:Number(d.data().dailyRate??0),monthlySalary:Number(d.data().monthlySalary??0)}));attendance=a.docs.map(d=>({id:d.id,...d.data()}));advances=adv.docs.map(d=>({id:d.id,...d.data(),recoveredAmount:Number(d.data().recoveredAmount||0)}));payments=pay.docs.map(d=>({id:d.id,...d.data()}));render()}catch(e){toast(`Couldn't load Pay data: ${e.message||"permission or connection error"}`)}}
+async function loadData(){if(!user)return;try{householdId=householdId||await resolveHouseholdId();if(!householdId)throw new Error("No household access found for this Google account.");const [w,a,adv,pay]=await Promise.all([getDocs(query(collection(db,"households",householdId,"workers"),orderBy("name"))),getDocs(query(collection(db,"households",householdId,"attendance"),orderBy("date","desc"))),getDocs(query(collection(db,"households",householdId,"advances"),orderBy("advanceDate","desc"))),getDocs(collection(db,"households",householdId,"payments"))]);workers=w.docs.map(d=>({id:d.id,...d.data(),shiftType:d.data().shiftType??"double",monthlyPaidLeaves:Number(d.data().monthlyPaidLeaves??2),dailyRate:Number(d.data().dailyRate??0),monthlySalary:Number(d.data().monthlySalary??0)}));attendance=a.docs.map(d=>({id:d.id,...d.data()}));advances=adv.docs.map(d=>({id:d.id,...d.data(),recoveredAmount:Number(d.data().recoveredAmount||0)}));payments=pay.docs.map(d=>({id:d.id,...d.data()}));render()}catch(e){error(`Couldn't load Pay data: ${e.message||"permission or connection error"}`)}}
 
 /* =========================================================================
    SALARY + ADVANCE + PAYMENT — the calculated salary, advance recovery,
@@ -155,7 +155,7 @@ async function recordPayment(workerId){
     toast("Payment recorded");
   }catch(e){ error(`Payment wasn't saved: ${e.message}`); }
 }
-function error(msg){ toast(msg); }
+function error(msg){ window.error ? window.error("Something didn't sync",msg) : toast(msg); }
 
 /* ---- Add Advance modal ---- */
 function openAdvanceModal(preselectId){
@@ -206,7 +206,7 @@ async function saveAdvance(){
   const rec={ workerId, amount, advanceDate:$("#advDate").value||iso(new Date()), recoveryMonth:$("#advRecoverMonth").value,
     recoveredAmount:0, remainingAmount:amount, status:"pending", notes:$("#advNotes").value||"", createdAt:serverTimestamp(), updatedAt:serverTimestamp() };
   try{ await setDoc(doc(advancesPath()), rec); closeAdvanceModal(); await loadData(); toast("Advance saved"); }
-  catch(e){ toast(`Advance wasn't saved: ${e.message}`); }
+  catch(e){ error(`Advance wasn't saved: ${e.message}`); }
 }
 
 /* ---- Render ---- */
